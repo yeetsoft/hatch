@@ -75,8 +75,7 @@ function AmbitionsContent() {
   return <AmbitionsBody data={data} scopeKeys={scope.isScoped ? scope.keys : []} now={new Date()} error={error} />;
 }
 
-/** The page under its gate: the header, the strip of what is waiting, then the
-    rows. Apart from the loading so a test can draw it from props. */
+/** The page under its gate: the header, the two tiles, then the rows. Apart from the loading so a test can draw it from props. */
 export function AmbitionsBody({
   data,
   scopeKeys,
@@ -97,7 +96,7 @@ export function AmbitionsBody({
 
       {error && <p className="text-danger">{error}</p>}
 
-      <WaitingStrip ballot={data.ballot} error={data.ballotError} scopeKeys={scopeKeys} now={now} />
+      <AmbitionTiles data={data} scopeKeys={scopeKeys} now={now} />
 
       <AmbitionList ambitions={data.ambitions} statuses={data.statuses} />
     </div>
@@ -119,9 +118,54 @@ export function holdQuestions(ballot: Ballot): { ambition: string; question: Que
   return found;
 }
 
-/** The hold-level questions on the ambitions in scope, each a line linking to
-    the ballot; or one sentence where there are none or the read failed. */
-export function WaitingStrip({
+/** How many open issues the hold questions on the ambitions in scope hold,
+    each counted once. A node with hold questions adds the most any one of them
+    holds, read from the ballot's own list by question id. Beneath a node that is
+    not an ambition nothing adds, since its count covers what lies under it; an
+    ambition's own question holds only itself, so the walk goes on beneath it. */
+export function heldIssues(ballot: Ballot): number {
+  const holdsOf = new Map(ballot.questions.map((q) => [q.question.id, q.holds]));
+  let total = 0;
+
+  const walk = (node: BallotNode) => {
+    const held = node.questions.filter((q) => q.level === 'hold').map((q) => holdsOf.get(q.id) ?? 1);
+    if (held.length > 0) total += Math.max(...held);
+    if (held.length > 0 && node.type !== 'ambition') return;
+    for (const child of node.children) walk(child);
+  };
+
+  for (const root of ballot.roots) if (root.type === 'ambition') walk(root);
+  return total;
+}
+
+/** The two tiles above the rows: what waits on the reader, and how many
+    capabilities hold. Neither is drawn where no ambition is in scope. */
+export function AmbitionTiles({
+  data,
+  scopeKeys,
+  now,
+}: {
+  data: AmbitionsView;
+  scopeKeys: string[];
+  now: Date;
+}) {
+  if (data.ambitions.length === 0) return null;
+
+  return (
+    <div className="hatch-ambition-tiles">
+      <DecisionsTile ballot={data.ballot} error={data.ballotError} scopeKeys={scopeKeys} now={now} />
+      <CapabilitiesTile ambitions={data.ambitions} statuses={data.statuses} />
+    </div>
+  );
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** The hold-level questions on the ambitions in scope: how many, how many
+    issues they hold and how long the oldest has waited, then a line for each
+    linking to the ballot. One sentence stands in where there are none or the
+    read failed. */
+export function DecisionsTile({
   ballot,
   error,
   scopeKeys,
@@ -132,18 +176,38 @@ export function WaitingStrip({
   scopeKeys: string[];
   now: Date;
 }) {
+  const heading = <h2 className="hatch-health-label">Waiting on you</h2>;
+
   if (error || !ballot) {
-    return <p className="text-danger hatch-ambition-failure">What is waiting on you could not be read: {error ?? 'no answer'}</p>;
+    return (
+      <section className="hatch-health-tile hatch-ambition-tile hatch-ambition-strip">
+        {heading}
+        <p className="text-danger hatch-ambition-failure">What is waiting on you could not be read: {error ?? 'no answer'}</p>
+      </section>
+    );
   }
 
   const lines = holdQuestions(ballot);
-  if (lines.length === 0) return <EmptyState message="Nothing is waiting on you." />;
+  if (lines.length === 0) {
+    return (
+      <section className="hatch-health-tile hatch-ambition-tile hatch-ambition-strip">
+        {heading}
+        <EmptyState message="Nothing is waiting on you." />
+      </section>
+    );
+  }
+
+  const asked = lines.map(({ question }) => Date.parse(question.askedAt)).filter((t) => !Number.isNaN(t));
+  const oldest = asked.length === 0 ? null : waitedWords(new Date(Math.min(...asked)).toISOString(), now);
+  const age = oldest === null ? '' : oldest === 'just asked' ? ' The oldest was just asked.' : ` The oldest has waited ${oldest}.`;
 
   return (
-    <Card as="section" className="hatch-ambition-strip">
-      <h2 className="hatch-section-title">
-        {lines.length} {lines.length === 1 ? 'decision' : 'decisions'} waiting on you
-      </h2>
+    <section className="hatch-health-tile hatch-ambition-tile hatch-ambition-strip">
+      {heading}
+      <p className="hatch-health-value">{plural(lines.length, 'decision', 'decisions')}</p>
+      <p className="hatch-ambition-tile-note">
+        Holding {plural(heldIssues(ballot), 'open issue', 'open issues')}.{age}
+      </p>
       <ul className="hatch-ambition-strip-lines">
         {lines.map(({ ambition, question }) => (
           <li key={question.id}>
@@ -156,7 +220,31 @@ export function WaitingStrip({
           </li>
         ))}
       </ul>
-    </Card>
+      <Link to={scopedPath('/ballot', scopeKeys)} className="hatch-ambition-tile-link">
+        Open the ballot
+      </Link>
+    </section>
+  );
+}
+
+/** How many capabilities hold across the ambitions still being pursued: those
+    in a finished or shelved column are left out, so a closed ambition does not
+    read as parts done for good. */
+export function CapabilitiesTile({ ambitions, statuses }: { ambitions: AmbitionRow[]; statuses: Status[] }) {
+  const live = ambitions.filter((row) => {
+    const status = statuses.find((s) => s.id === row.statusId);
+    return !status?.isTerminal && !status?.isDeferred;
+  });
+  const sum = (count: (r: AmbitionRow) => number) => live.reduce((total, row) => total + count(row), 0);
+
+  return (
+    <section className="hatch-health-tile hatch-ambition-tile hatch-ambition-capabilities-tile">
+      <h2 className="hatch-health-label">Capabilities that hold</h2>
+      <p className="hatch-health-value">{`${sum((r) => r.holds)} of ${sum((r) => r.capabilities)}`}</p>
+      <p className="hatch-ambition-tile-note">
+        {sum((r) => r.inFlight)} more in flight. {sum((r) => r.newlyHolding)} newly holding this week.
+      </p>
+    </section>
   );
 }
 

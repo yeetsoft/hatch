@@ -22,7 +22,8 @@ function parse(body: string): Record<string, string> {
     merged, later winning - outside any at-rule. */
 function declarationsOf(selector: string): Record<string, string> {
   const props: Record<string, string> = {};
-  for (const [, selectors, body] of css.matchAll(/(?<=^|[;}])\s*([^{};@]+)\{([^{}]*)\}/g)) {
+  const outside = css.replace(/@media[^{]*\{[\s\S]*?\n\}/g, '');
+  for (const [, selectors, body] of outside.matchAll(/(?<=^|[;}])\s*([^{};@]+)\{([^{}]*)\}/g)) {
     if (!selectors.split(',').some((s) => s.trim() === selector)) continue;
     Object.assign(props, parse(body));
   }
@@ -54,6 +55,34 @@ describe("the ambition strip's stylesheet", () => {
     const lines = declarationsOf('.hatch-ambition-strip-lines');
 
     expect(lines['grid-template-columns']).toBe('minmax(0, 1fr) max-content minmax(0, 2fr) max-content');
+  });
+
+  it('lays the two tiles side by side at the desktop profile, and takes no margin shorthand', () => {
+    const tiles = declarationsOf('.hatch-ambition-tiles');
+
+    expect(tiles['display']).toBe('grid');
+    expect(tiles['grid-template-columns']).toBe('repeat(2, minmax(0, 1fr))');
+    expect(tiles['gap']).toBe('var(--sp-3)');
+    expect(tiles['margin']).toBeUndefined();
+  });
+
+  it('stacks the two tiles at the phone profile', () => {
+    expect(phoneDeclarationsOf('.hatch-ambition-tiles')['grid-template-columns']).toBe('1fr');
+  });
+
+  it('draws the note in the muted label style and the link as a link', () => {
+    const note = declarationsOf('.hatch-ambition-tile-note');
+    const link = declarationsOf('.hatch-ambition-tile-link');
+
+    expect(note['font-size']).toBe('var(--t-label)');
+    expect(note['color']).toBe('var(--muted)');
+    expect(link['color']).toBe('var(--primary)');
+    expect(link['text-decoration']).toBe('underline');
+    expect(link['align-self']).toBe('flex-start');
+  });
+
+  it('gives the link a touch target on the phone', () => {
+    expect(phoneDeclarationsOf('.hatch-ambition-tile-link')['min-height']).toBe('44px');
   });
 
   it('stacks a strip line at the phone profile', () => {
