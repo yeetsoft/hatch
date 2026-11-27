@@ -286,7 +286,13 @@ Press `/` on any page and a prompt opens over it. Type an issue's key
 list narrows as you type. **↑↓** move, **↵** opens the highlighted row and
 **esc** puts it away. The last row, **Search everything**, carries what you
 typed to the Search page - the way to find an issue by a title it used to
-have, since the console itself matches current titles only. It is not a
+have, since the console itself matches current titles only. A key or a number
+finds closed issues too, not only the ones on the board: each project knows
+the highest number it has handed out, so typing `455` lists issue 455 of every
+project that got that far, at once. The rows for keys the page already holds
+show their titles right away; the rest show the key with a dim `…` where the
+title goes, and fill in a moment after you stop typing, when the console asks
+the server once. More than fifty keys say `50 of 112 — keep typing`. It is not a
 shortcut while you are typing:
 `/` in a text box, a description editor, or the board's own search box is a
 slash.

@@ -38,8 +38,11 @@ import {
 } from 'react';
 import { StatusDot } from './StatusPill';
 import { boardColumns } from '../lib/columns';
-import { SEARCH_ROW, entryKeys, goToRows, goToStatus, whereOnBoard } from '../lib/goTo';
+import { SEARCH_ROW, entryKeys, goToStatus, whereOnBoard } from '../lib/goTo';
 import type { GoToLoad, Mark } from '../lib/goTo';
+import { listEntries, mergeAnswer, scopeToken } from '../lib/goToKeys';
+import type { GoToListing } from '../lib/goToKeys';
+import { useGoTo } from '../lib/useGoTo';
 import {
   commandList,
   commandRows,
@@ -59,7 +62,7 @@ import type { Priority } from '../lib/priority';
 import { confirmMove } from '../lib/protectedColumns';
 import { searchPath } from '../lib/search';
 import type { CloseSubtree } from '../lib/useCloseSubtree';
-import type { IssueCard, Status } from '../types';
+import type { IssueCard, Project, Status } from '../types';
 
 export interface OmniBarProps {
   /** Every issue the board holds, filtered or not - the console narrows them to
@@ -71,11 +74,21 @@ export interface OmniBarProps {
   visibleKeys: Set<string> | null;
   /** The tab's scope: `[]` is every project. */
   scopeKeys: string[];
+  /** The scope's projects, whose issue numbers say which keys exist; every
+      project when unscoped. */
+  projects: Project[];
+  /** Every project, scoped or not: a whole key outside the scope is still listed. */
+  allProjects: Project[];
+  /** The scope as project ids, for the one request the console makes. */
+  scopeIds: number[];
   /** Whether `cards` has landed. */
   load: GoToLoad;
   /** A row was taken. The console does not give focus back: whoever took it is
       about to put it somewhere. */
   onTake: (card: IssueCard) => void;
+  /** A row was taken that the page holds no card for yet: its key alone. The page
+      has nothing to ring, so this opens the issue. Otherwise as `onTake`. */
+  onTakeKey: (key: string) => void;
   /** The trailing row was taken; the console does not give focus back, for the
       reason `onTake` does not. */
   onSearch: (path: string) => void;
@@ -130,8 +143,12 @@ export function OmniBar({
   statuses,
   visibleKeys,
   scopeKeys,
+  projects,
+  allProjects,
+  scopeIds,
   load,
   onTake,
+  onTakeKey,
   onSearch,
   commandContext,
   env,
@@ -176,10 +193,24 @@ export function OmniBar({
   const { isAdmin, pathname, view, canSet, filters } = commandContext;
   const offer = closing.offer;
 
-  const { rows, total } = useMemo(
-    () => (mode === 'issues' ? goToRows(cards, asked, scopeKeys) : { rows: [], total: 0 }),
-    [mode, cards, asked, scopeKeys],
+  /* Listed from the projects' numbers at once, and titled from the cards in
+     hand; the server's one answer is laid over them when it lands. */
+  const listing = useMemo<GoToListing>(
+    () =>
+      mode === 'issues'
+        ? listEntries({ cards, projects, allProjects, scopeKeys, query: asked })
+        : { entries: [], total: 0 },
+    [mode, cards, projects, allProjects, scopeKeys, asked],
   );
+  const { answer, pending } = useGoTo(asked, mode === 'issues', scopeIds, (q) =>
+    listEntries({ cards, projects, allProjects, scopeKeys, query: q }).entries,
+  );
+  const scope = scopeToken(scopeIds);
+  const { entries, total } = useMemo(
+    () => mergeAnswer(listing, answer, asked, scope),
+    [listing, answer, asked, scope],
+  );
+  const more = answer !== null && answer.more && answer.scope === scope && answer.query === asked.trim();
   const commands = useMemo(
     () => commandList({ isAdmin, pathname, view, canSet, filters }),
     [isAdmin, pathname, view, canSet, filters],
@@ -204,7 +235,7 @@ export function OmniBar({
   const order = offer
     ? answers.map((answer) => answer.id)
     : mode === 'issues'
-      ? entryKeys(rows, asked)
+      ? entryKeys(entries, asked)
       : mode === 'commands'
         ? found.rows.map((command) => command.id)
         : [];
@@ -339,7 +370,11 @@ export function OmniBar({
     }
     done.current = true;
     if (order[index] === SEARCH_ROW) onSearch(searchPath(asked)!);
-    else onTake(rows[index].card);
+    else {
+      const { card, key } = entries[index];
+      if (card) onTake(card);
+      else onTakeKey(key);
+    }
   }
 
   function move(to: number) {
@@ -389,7 +424,8 @@ export function OmniBar({
         ? (activeCommand?.disabled ?? commandStatus(found.rows.length, found.total))
         : mode === 'help'
           ? PREFIXES.map((row) => `${row.prefix} ${row.mode === 'help' ? 'this list' : row.mode}`).join(' · ')
-          : goToStatus(asked, rows.length, total, load));
+          : // Keys listed from numbers are real whether or not the board has been read.
+            goToStatus(asked, entries.length, total, entries.length > 0 ? 'ready' : load, { more, pending }));
   const rowKey = (key: string) => (key === SEARCH_ROW ? searchRowId : rowId(key));
 
   return (
@@ -525,16 +561,24 @@ export function OmniBar({
               </li>
             );
           })}
-          {(offer ? [] : rows).map((row, index) => {
-            const { card } = row;
-            const status = statuses.find((s) => s.id === card.statusId);
-            const isActive = card.key === active;
-            const filtered = visibleKeys !== null && whereOnBoard(card, visibleKeys, columns) === 'filtered';
+          {(offer ? [] : entries).map((entry, index) => {
+            const { card, looked } = entry;
+            // The card in hand wins; else what the server said; else nothing yet.
+            const shown = card ?? looked;
+            const held = card ? statuses.find((s) => s.id === card.statusId) : undefined;
+            const column = held
+              ? { name: held.name, color: held.color }
+              : looked
+                ? { name: looked.statusName, color: looked.statusColor }
+                : null;
+            const isActive = entry.key === active;
+            const filtered =
+              card !== undefined && visibleKeys !== null && whereOnBoard(card, visibleKeys, columns) === 'filtered';
 
             return (
               <li
-                key={card.key}
-                id={rowId(card.key)}
+                key={entry.key}
+                id={rowId(entry.key)}
                 role="option"
                 aria-selected={isActive}
                 ref={isActive ? activeRow : null}
@@ -544,26 +588,32 @@ export function OmniBar({
                 /* Move, not enter: a list that scrolls under a resting pointer
                    fires enter for the row that slid beneath it. */
                 onMouseMove={() => {
-                  if (!isActive) setHighlight(card.key);
+                  if (!isActive) setHighlight(entry.key);
                 }}
               >
                 <span className="hatch-omni-marker" aria-hidden="true">
                   {isActive ? '❯' : ''}
                 </span>
                 <span className="hatch-omni-key">
-                  <Marked text={card.key} marks={row.field === 'key' ? row.marks : []} />
+                  <Marked text={entry.key} marks={entry.field === 'key' ? entry.marks : []} />
                 </span>
-                <span className="hatch-omni-type">{card.type}</span>
+                <span className="hatch-omni-type">{shown?.type}</span>
                 <span className="hatch-omni-title">
-                  <Marked text={card.title} marks={row.field === 'title' ? row.marks : []} />
+                  {shown ? (
+                    <Marked text={shown.title} marks={entry.field === 'title' ? entry.marks : []} />
+                  ) : (
+                    <span className="hatch-omni-pending" aria-hidden="true">
+                      …
+                    </span>
+                  )}
                 </span>
-                {status && (
+                {column && (
                   <span className="hatch-omni-column">
-                    <StatusDot status={status} />
-                    {status.name}
+                    <StatusDot status={column} />
+                    {column.name}
                   </span>
                 )}
-                {row.outOfScope ? (
+                {entry.outOfScope ? (
                   <span className="hatch-omni-filtered">[out of scope]</span>
                 ) : (
                   filtered && <span className="hatch-omni-filtered">[filtered]</span>
@@ -579,7 +629,7 @@ export function OmniBar({
               ref={active === SEARCH_ROW ? activeRow : null}
               className={`hatch-omni-row hatch-omni-row--search${active === SEARCH_ROW ? ' is-active' : ''}`}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => take(rows.length)}
+              onClick={() => take(entries.length)}
               onMouseMove={() => {
                 if (active !== SEARCH_ROW) setHighlight(SEARCH_ROW);
               }}

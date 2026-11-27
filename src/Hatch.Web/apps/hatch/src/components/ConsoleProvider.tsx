@@ -210,6 +210,12 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     else navigate(scopedPath(`/issues/${card.key}`, scope.keys));
   };
 
+  // A key the page holds no card for: nothing on the board to ring, so its page.
+  const onTakeKey = (key: string) => {
+    setOpen(false);
+    navigate(scopedPath(`/issues/${key}`, scope.keys));
+  };
+
   const onSearch = (path: string) => {
     setOpen(false);
     navigate(path);
@@ -248,8 +254,12 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
           statuses={statuses}
           visibleKeys={host ? host.visibleKeys : null}
           scopeKeys={scope.keys}
+          projects={scope.projects}
+          allProjects={scope.allProjects}
+          scopeIds={scope.ids}
           load={host ? 'ready' : read.state}
           onTake={onTake}
+          onTakeKey={onTakeKey}
           onSearch={onSearch}
           commandContext={commandContext}
           env={env}
