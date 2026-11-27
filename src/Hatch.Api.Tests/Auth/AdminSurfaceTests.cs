@@ -165,6 +165,7 @@ public class AdminSurfaceTests
         // them, under the same scope as the board.
         "BallotController.GetBallot",
         "AmbitionsController.GetAmbitions",
+        "AmbitionsController.GetChanges",
         "ImportController.Preview",
         "ImportController.PreviewText",
         "ImportController.Import",
@@ -354,6 +355,7 @@ public class AdminSurfaceTests
         // Choosing a home screen is a person's own, never a key's - see
         // MeHomeController.PutHome.
         "MeHomeController.PutHome",
+        "MeVisitController.PutAmbitions",
 
         // A person's own Slack links, never a key's - see MeChatController.
         "MeChatController.ConfirmLink",
@@ -898,6 +900,7 @@ public class AdminSurfaceTests
         // Choosing a home screen is a person's own, never a key's or a
         // keyless runner's. See MeHomeController.PutHome.
         "MeHomeController.PutHome",
+        "MeVisitController.PutAmbitions",
 
         // A person's own Slack links, never a key's or a keyless runner's. See MeChatController.
         "MeChatController.ConfirmLink",
@@ -1003,6 +1006,7 @@ public class AdminSurfaceTests
         "BackupController.GetBackup",
         "BallotController.GetBallot",
         "AmbitionsController.GetAmbitions",
+        "AmbitionsController.GetChanges",
         "BoardController.GetBoard",
         "BoardHealthController.GetBoardHealth",
         "BroughtCurrentController.PutBroughtCurrent",

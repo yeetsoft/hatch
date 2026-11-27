@@ -82,45 +82,39 @@ public class ReportReadCostTests
         // The rows in the range, off the end-time index (HA-2782), and the two bounds. The small
         // board reads its whole table, for the reason in the summary above.
         ["GET /api/reports/consumption"] = (
-            new(5, 2, 307, 97, "Issues=400;Projects=2;WorkLogEntries=550"),
-            new(5, 2, 307, 97, "Issues=400;Projects=2;WorkLogEntries=350")),
+            new(5, 2, 312, 97, "Issues=406;Projects=2;WorkLogEntries=550"),
+            new(5, 2, 312, 97, "Issues=406;Projects=2;WorkLogEntries=350")),
         ["GET /api/reports/consumption.csv"] = (
-            new(3, 2, 257, 47, "Issues=400;Projects=2;WorkLogEntries=500"),
-            new(3, 2, 257, 47, "Issues=400;Projects=2;WorkLogEntries=300")),
+            new(3, 2, 262, 47, "Issues=406;Projects=2;WorkLogEntries=500"),
+            new(3, 2, 262, 47, "Issues=406;Projects=2;WorkLogEntries=300")),
         // Summed by the database: a row per bucket that holds a session, and the
         // two bounds. Reads the window and one row off each end of the end-time index.
         ["GET /api/work-log/history"] = (
-            new(3, 0, 32, 32, "Issues=200;WorkLogEntries=502"),
-            new(3, 0, 32, 32, "Issues=200;WorkLogEntries=302")),
+            new(3, 0, 32, 32, "Issues=203;WorkLogEntries=502"),
+            new(3, 0, 32, 32, "Issues=203;WorkLogEntries=302")),
         // The totals, the page, the paths read and the two bounds: at most
         // twenty rows of page, one of totals, one per distinct path, two bounds.
         ["GET /api/work-log/sessions"] = (
-            new(5, 0, 24, 24, "Issues=600;Projects=1;WorkLogEntries=1502"),
-            new(5, 0, 24, 24, "Issues=600;Projects=1;WorkLogEntries=902")),
+            new(5, 0, 24, 24, "Issues=609;Projects=1;WorkLogEntries=1502"),
+            new(5, 0, 24, 24, "Issues=609;Projects=1;WorkLogEntries=902")),
         // The same, and the heaviest five: one more read, five more rows, and
         // still the totals, the paths and the bounds once - what the
         // leaderboard asks instead of the line above twice.
         ["GET /api/work-log/sessions?top"] = (
-            new(6, 0, 29, 29, "Issues=800;Projects=2;WorkLogEntries=2002"),
-            new(6, 0, 29, 29, "Issues=800;Projects=2;WorkLogEntries=1202")),
+            new(6, 0, 29, 29, "Issues=812;Projects=2;WorkLogEntries=2002"),
+            new(6, 0, 29, 29, "Issues=812;Projects=2;WorkLogEntries=1202")),
         ["GET /api/work-log/by-playbook"] = (
-            new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
-            new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=300")),
+            new(2, 0, 306, 306, "Issues=203;Statuses=6;WorkLogEntries=500"),
+            new(2, 0, 306, 306, "Issues=203;Statuses=6;WorkLogEntries=300")),
         // The health poll's own trail reads (HA-2783): the window off the event indexes, and for each
         // issue and kind one probe of (IssueId, Kind, At) for the newest earlier event. The same rows
         // at both sizes, and the large board reads no more of any table than the small one.
         ["BoardHealthTrail.MovesAsync"] = (
-            new(3, 1, 904, 704, "IssueEvents=704;Issues=600"),
-            new(3, 1, 904, 704, "IssueEvents=704;Issues=600")),
+            new(3, 1, 907, 704, "IssueEvents=704;Issues=609"),
+            new(3, 1, 907, 704, "IssueEvents=704;Issues=609")),
         ["BoardHealthTrail.ReadAsync (claims)"] = (
-            new(3, 2, 550, 150, "IssueEvents=150;Issues=600"),
-            new(3, 2, 550, 150, "IssueEvents=150;Issues=600")),
-        ["BoardHealthTrail.LevelsAsync"] = (
-            new(3, 1, 450, 250, "IssueEvents=250;Issues=600"),
-            new(3, 1, 450, 250, "IssueEvents=250;Issues=600")),
-        ["BoardHealthTrail.RecordsAsync"] = (
-            new(3, 1, 450, 250, "IssueEvents=250;Issues=600"),
-            new(3, 1, 450, 250, "IssueEvents=250;Issues=600")),
+            new(3, 2, 556, 150, "IssueEvents=150;Issues=609"),
+            new(3, 2, 556, 150, "IssueEvents=150;Issues=609")),
         ["BoardHealthTrail.RunnerStatesAsync"] = (
             new(4, 0, 21, 21, "RunnerStates=96"),
             new(4, 0, 21, 21, "RunnerStates=21")),
@@ -128,14 +122,25 @@ public class ReportReadCostTests
         // it per issue, and for an issue that has not moved by its end the first one after. Two loads
         // of Issues: the report's rows, and BoardHealthTrail's probe, one row per issue each.
         ["GET /api/reports/cumulative-flow"] = (
-            new(5, 2, 1110, 710, "IssueEvents=704;Issues=800;Projects=2;Statuses=6"),
-            new(5, 2, 1110, 710, "IssueEvents=704;Issues=800;Projects=2;Statuses=6")),
+            new(5, 2, 1116, 710, "IssueEvents=704;Issues=812;Projects=2;Statuses=6"),
+            new(5, 2, 1116, 710, "IssueEvents=704;Issues=812;Projects=2;Statuses=6")),
+        // Read for its window alone (HA-2785): the moves the window needs, the questions asked in it or
+        // answered in it, and the drops and the sessions as counts, a row for each of the two. Rows
+        // returned are the same at both sizes, and so is what Postgres reads of every table but the
+        // ones it scans in full. It sat in the other list for one figure: at the large size Postgres
+        // scanned Issues for the question reads where the small one did not. With the ambition the
+        // seed now holds (HA-2850) the large size reads less of it. That is the planner's choice on
+        // a few hundred rows, not the read's, so the test below keeps holding apart what the report
+        // is meant to keep equal. Two loads of Issues: the report's rows and the trail's probe.
+        ["GET /api/reports/flow"] = (
+            new(10, 2, 1242, 836, "Comments=568;IssueEvents=704;Issues=1421;Projects=2;Statuses=6;WorkLogEntries=500"),
+            new(10, 2, 1242, 836, "Comments=245;IssueEvents=704;Issues=1218;Projects=2;Statuses=6;WorkLogEntries=300")),
         // The column normals read the thirty days' moves alone (HA-2786): the issues once for the rows,
         // and the trail's probe, which reads them again. The same rows at both sizes. Unlike the flow
         // report, the read opts out of the query filters, so no join to Issues changes the plan.
         ["ColumnNormals.ForAsync"] = (
-            new(4, 2, 923, 563, "IssueEvents=704;Issues=400;Projects=2"),
-            new(4, 2, 923, 563, "IssueEvents=664;Issues=400;Projects=2")),
+            new(4, 2, 928, 563, "IssueEvents=704;Issues=406;Projects=2"),
+            new(4, 2, 928, 563, "IssueEvents=664;Issues=406;Projects=2")),
     };
 
     /// <summary>
@@ -176,38 +181,29 @@ public class ReportReadCostTests
         // priority tree, which reads Issues, both with no range. Four loads of Issues: the report's
         // rows, BoardHealthTrail's probe, the cards and the priority tree.
         ["GET /api/reports/timeline"] = (
-            new(13, 4, 1496, 716, "Comments=220;IssueEvents=704;Issues=1401;Projects=8;Statuses=24"),
-            new(13, 4, 1496, 716, "Comments=720;IssueEvents=704;Issues=1600;Projects=8;Statuses=24")),
-        // Read for its window alone (HA-2785): the moves the window needs, the questions asked in it or
-        // answered in it, and the drops and the sessions as counts, a row for each of the two. Rows
-        // returned are the same at both sizes. It stays here and not in Same for one figure: the query
-        // filters join Issues in every statement, and at the large size Postgres scans Issues for the
-        // question reads where the small one does not, 400 rows more. The test below holds apart what the
-        // report is meant to keep equal. Two loads of Issues: the report's rows and the trail's probe.
-        ["GET /api/reports/flow"] = (
-            new(10, 2, 1233, 833, "Comments=561;IssueEvents=704;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=500"),
-            new(10, 2, 1233, 833, "Comments=241;IssueEvents=704;Issues=1200;Projects=2;Statuses=6;WorkLogEntries=300")),
+            new(13, 4, 1509, 717, "Comments=223;IssueEvents=704;Issues=1624;Projects=8;Statuses=24"),
+            new(13, 4, 1509, 717, "Comments=723;IssueEvents=704;Issues=1624;Projects=8;Statuses=24")),
         // The cards' read of waiting questions, with no range (HA-2816): the card load goes through the
         // priority tree to Questions.WaitingLevelsAsync, and the changelog's rollup reads
         // Questions.WaitingCountsAsync, which both join Comments to Issues and Statuses. The changelog does
         // not read QuestionTrail.
         ["GET /api/reports/changelog (epic level)"] = (
-            new(13, 5, 417, 12, "Comments=720;Issues=826;Projects=3;Statuses=36"),
-            new(13, 5, 417, 12, "Comments=1561;Issues=1025;Projects=3;Statuses=36")),
+            new(13, 5, 426, 15, "Comments=733;Issues=1241;Projects=3;Statuses=36"),
+            new(13, 5, 426, 15, "Comments=1633;Issues=1241;Projects=3;Statuses=36")),
         ["GET /api/reports/changelog (story level)"] = (
-            new(15, 7, 621, 12, "Comments=720;Issues=1047;Projects=3;Statuses=42"),
-            new(15, 7, 621, 12, "Comments=1561;Issues=1246;Projects=3;Statuses=42")),
+            new(15, 7, 633, 15, "Comments=733;Issues=1466;Projects=3;Statuses=42"),
+            new(15, 7, 633, 15, "Comments=1633;Issues=1466;Projects=3;Statuses=42")),
         ["GET /api/reports/changelog (loose=true)"] = (
-            new(15, 7, 421, 12, "Comments=720;Issues=855;Projects=4;Statuses=42"),
-            new(15, 7, 421, 12, "Comments=1561;Issues=1054;Projects=4;Statuses=42")),
+            new(15, 7, 430, 15, "Comments=733;Issues=1266;Projects=4;Statuses=42"),
+            new(15, 7, 430, 15, "Comments=1633;Issues=1266;Projects=4;Statuses=42")),
         // The actor's events in the range, and the first event for the start clamp, read off the index as
         // one row (HA-2817): IssueEvents is no longer what grows, and the large board reads fewer of it.
         // It stays here for the cards, which read Comments and Issues through the same waiting-question
         // read as the lines above (HA-2816). The first-event read is held equal to MIN(At) by
         // ActivityFirstEventTests.
         ["GET /api/reports/activity"] = (
-            new(12, 3, 1861, 1281, "Comments=220;IssueEvents=2295;Issues=1201;Projects=8;Statuses=18"),
-            new(12, 3, 1861, 1281, "Comments=720;IssueEvents=1275;Issues=1400;Projects=8;Statuses=18")),
+            new(12, 3, 1876, 1287, "Comments=223;IssueEvents=2309;Issues=1421;Projects=8;Statuses=18"),
+            new(12, 3, 1876, 1287, "Comments=723;IssueEvents=1280;Issues=1421;Projects=8;Statuses=18")),
         // The poll sends the same statements and returns the same rows at both sizes, and whatever stands
         // in review: BoardHealthReadCostTests holds that apart. It loads Issues end to end once, in the
         // priority tree (HA-2790); the strip's rows, the column normals and the wait history are cut
@@ -223,11 +219,31 @@ public class ReportReadCostTests
         // filters in each of its subqueries, and is shared with GET /api/attention. Neither can
         // change without a new index or a change to what the attention panel answers.
         ["GET /api/board/health"] = (
-            new(57, 14, 5094, 2641, "Comments=1782;IssueEvents=2755;Issues=4802;LegacyRunners=3;Projects=14;RunnerStates=27;Statuses=30"),
-            new(57, 14, 5094, 2641, "Comments=1923;IssueEvents=2607;Issues=5202;LegacyRunners=3;Projects=14;RunnerStates=3;Statuses=30")),
+            new(57, 14, 5137, 2648, "Comments=1809;IssueEvents=2759;Issues=5481;LegacyRunners=3;Projects=15;RunnerStates=27;Statuses=30"),
+            new(57, 14, 5137, 2648, "Comments=2002;IssueEvents=2607;Issues=5684;LegacyRunners=3;Projects=15;RunnerStates=3;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(61, 15, 5055, 2591, "Comments=1782;IssueEvents=2799;Issues=4831;LegacyRunners=3;Projects=20;RunnerStates=27;Statuses=30"),
-            new(61, 15, 5055, 2591, "Comments=1923;IssueEvents=2651;Issues=5431;LegacyRunners=3;Projects=20;RunnerStates=3;Statuses=30")),
+            new(61, 15, 5101, 2598, "Comments=1809;IssueEvents=2803;Issues=5714;LegacyRunners=3;Projects=21;RunnerStates=27;Statuses=30"),
+            new(61, 15, 5101, 2598, "Comments=2002;IssueEvents=2651;Issues=5917;LegacyRunners=3;Projects=21;RunnerStates=3;Statuses=30")),
+        // What changed under the ambitions (HA-2850): the same statements, the same rows and the same rows of
+        // IssueEvents at both sizes - the window off IX_IssueEvents_Kind_At, never the old trail - which the test
+        // below holds apart. It is here for one table: CapabilityVerdicts. The seed holds a few dozen, too
+        // few for Postgres to prefer an index to a scan, so the large size reads more of it. The anti-join's
+        // answer is one row per capability either way. Comments reads less at the large size, and is no growth.
+        // Do not move it to Same unless it is measured the same at both sizes.
+        ["GET /api/ambitions/changes"] = (
+            new(20, 7, 27, 20, "Capabilities=14;CapabilityLinks=3;CapabilityVerdicts=36;Comments=1849;IssueEvents=3;Issues=819;Projects=7;Statuses=8"),
+            new(20, 7, 27, 20, "Capabilities=14;CapabilityLinks=3;CapabilityVerdicts=144;Comments=557;IssueEvents=3;Issues=819;Projects=7;Statuses=3")),
+        // The trail's reads of levels and pull request records, each of the thirty days' changes and one probe
+        // per issue: the same rows at both sizes. What grows is Issues, read in full. With the 203 issues the seed
+        // holds since the ambition was added (HA-2850) Postgres scans it twice at the small size and three times
+        // at the large one, where it read it the same number of times at both before. A planner choice on few
+        // rows; see the note above this list.
+        ["BoardHealthTrail.LevelsAsync"] = (
+            new(3, 1, 453, 250, "IssueEvents=250;Issues=406"),
+            new(3, 1, 453, 250, "IssueEvents=250;Issues=609")),
+        ["BoardHealthTrail.RecordsAsync"] = (
+            new(3, 1, 453, 250, "IssueEvents=250;Issues=406"),
+            new(3, 1, 453, 250, "IssueEvents=250;Issues=609")),
     };
 
     private sealed record Read(string Name, Func<Harness, Task> Call);
@@ -259,6 +275,8 @@ public class ReportReadCostTests
         new("GET /api/work-log/by-playbook", h => Ok(h.WorkLog.GetByPlaybook(From, To, null, null, null, default))),
         new("GET /api/board/health", h => Ok(h.Health.GetBoardHealth("24h", null, default))),
         new("GET /api/board/health?project", h => Ok(h.Health.GetBoardHealth("24h", [ReadCostSeed.KeyA], default))),
+        // What changed under the ambitions since the window opened (HA-2850): the same four lines at both sizes.
+        new("GET /api/ambitions/changes", h => Ok(h.Ambitions.GetChanges(From, null, default))),
         new("ColumnNormals.ForAsync", async h => await new ColumnNormals().ForAsync(h.Db, h.Statuses, Now, default)),
         // The poll's own trail reads, apart from the rest of the poll (HA-2783).
         new("BoardHealthTrail.MovesAsync", async h => await BoardHealthTrail.MovesAsync(h.Db, WindowStart, null, default)),
@@ -297,10 +315,11 @@ public class ReportReadCostTests
         var (sm, lg) = (sizes["small"], sizes["large"]);
         if (sm.WindowMoves != lg.WindowMoves || sm.WindowSessions != lg.WindowSessions
             || sm.WindowLevels != lg.WindowLevels || sm.WindowRecords != lg.WindowRecords
-            || sm.WindowRunnerStates != lg.WindowRunnerStates)
+            || sm.WindowRunnerStates != lg.WindowRunnerStates || sm.WindowVerdicts != lg.WindowVerdicts)
             failures.Add($"the window differs between the sizes: {sm} and {lg}");
         if (lg.OldMoves < 5 * sm.OldMoves || lg.OldSessions < 5 * sm.OldSessions || lg.OldComments < 5 * sm.OldComments
-            || lg.OldLevels < 5 * sm.OldLevels || lg.OldRecords < 5 * sm.OldRecords || lg.OldRunnerStates < 5 * sm.OldRunnerStates)
+            || lg.OldLevels < 5 * sm.OldLevels || lg.OldRecords < 5 * sm.OldRecords || lg.OldRunnerStates < 5 * sm.OldRunnerStates
+            || lg.OldVerdicts < 5 * sm.OldVerdicts)
             failures.Add($"the large size holds less than five times the small one's history: {sm} and {lg}");
         if (sm.WindowSessions < 10 * ReadCostSeed.WindowDays)
             failures.Add($"the window holds {sm.WindowSessions} sessions, fewer than ten per day bucket");
@@ -416,6 +435,30 @@ public class ReportReadCostTests
             }
         }
 
+        // What changed under the ambitions reads from the instant on only (HA-2850): the same
+        // statements, the same rows and the same rows of IssueEvents at both sizes, whatever else
+        // Postgres reads more of at the large one (see Grows). The read draws four lines, so no
+        // IssueEvents rows would mean the seed no longer gives it anything to read.
+        {
+            const string name = "GET /api/ambitions/changes";
+            var (before, after) = (small[name], large[name]);
+
+            if (before.Row.Statements != after.Row.Statements || before.Row.Rows != after.Row.Rows
+                || before.Row.RowsOutsideIssueLoads != after.Row.RowsOutsideIssueLoads)
+                failures.Add($"{name} sends {before.Row.Statements} statements and returns {before.Row.Rows} rows at the small size and {after.Row.Statements} and {after.Row.Rows} at the large - it should be the same");
+
+            var (eventsBefore, eventsAfter) = (
+                ReadPerTable(before.Row.Read).GetValueOrDefault("IssueEvents"),
+                ReadPerTable(after.Row.Read).GetValueOrDefault("IssueEvents"));
+            if (eventsBefore != eventsAfter || eventsBefore == 0)
+                failures.Add($"{name} read {eventsBefore} IssueEvents rows at the small size and {eventsAfter} at the large - " +
+                    "the same number is the point, from the instant on and never the whole trail, and none would mean the read was not measured");
+
+            foreach (var (size, m) in new[] { ("small", before), ("large", after) })
+                if (ReturnedBy(m, "IssueEvents") == 0)
+                    failures.Add($"{name} returned no IssueEvents rows at the {size} size - the seed gives it nothing to read");
+        }
+
         if (failures.Count > 0)
             Assert.Fail(
                 string.Join(Environment.NewLine, failures) + Environment.NewLine + Environment.NewLine
@@ -432,7 +475,7 @@ public class ReportReadCostTests
     private sealed record Seeded(
         long WindowMoves, long OldMoves, long WindowSessions, long OldSessions, long OldComments,
         long WindowLevels, long OldLevels, long WindowRecords, long OldRecords,
-        long WindowRunnerStates, long OldRunnerStates);
+        long WindowRunnerStates, long OldRunnerStates, long WindowVerdicts, long OldVerdicts);
 
     private static readonly Dictionary<string, Seeded> sizes = [];
 
@@ -449,12 +492,14 @@ public class ReportReadCostTests
             await db.Comments.CountAsync(c => c.Kind == EfHatchComment.Note && c.CreatedAt < windowStart),
             await levels.CountAsync(e => e.At >= windowStart), await levels.CountAsync(e => e.At < windowStart),
             await records.CountAsync(e => e.At >= windowStart), await records.CountAsync(e => e.At < windowStart),
-            await db.RunnerStates.CountAsync(r => r.At >= windowStart), await db.RunnerStates.CountAsync(r => r.At < windowStart));
+            await db.RunnerStates.CountAsync(r => r.At >= windowStart), await db.RunnerStates.CountAsync(r => r.At < windowStart),
+            await db.CapabilityVerdicts.CountAsync(v => v.CreatedAt >= windowStart), await db.CapabilityVerdicts.CountAsync(v => v.CreatedAt < windowStart));
     }
 
     private static async Task<Dictionary<string, Measurement>> MeasureAllAsync(ReadCostSeed.Size size)
     {
-        var (connectionString, _) = await ReadCostSeed.SeedAsync(size, Now);
+        var (connectionString, _) = await ReadCostSeed.SeedAsync(size, Now,
+            extend: (db, board, issues) => ReadCostSeed.AddAmbitionAsync(db, board, issues, size, Now));
         sizes[size.Name] = await CountSeedAsync(connectionString);
 
         // Not counted: the statuses a read is handed rather than loads.
@@ -562,6 +607,7 @@ public class ReportReadCostTests
         public required ReportsController Reports { get; init; }
         public required WorkLogController WorkLog { get; init; }
         public required BoardHealthController Health { get; init; }
+        public required AmbitionsController Ambitions { get; init; }
 
         public static Harness On(HatchContext db, List<EfHatchStatus> statuses)
         {
@@ -585,6 +631,7 @@ public class ReportReadCostTests
                 Statuses = statuses,
                 Reports = new ReportsController(db, actors, TestClaims.With(), time),
                 WorkLog = new WorkLogController(db, time),
+                Ambitions = new AmbitionsController(db, actors, new StubCallerIdentity(), time),
                 Health = new BoardHealthController(
                     db, actors, runners, new Dispatch(db, actors, TestClaims.With(), time, keys, sessions), time,
                     new ColumnNormals(), new WaitHistory(), new StubCallerIdentity(), authOptions, keys,

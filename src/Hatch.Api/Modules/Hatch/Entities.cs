@@ -619,6 +619,38 @@ public class EfHatchPersonHome
     public required DateTimeOffset UpdatedAt { get; set; }
 }
 
+/// <summary>The pages Hatch remembers a person's last visit to, and nothing else.</summary>
+public static class PersonVisitPage
+{
+    public const string Ambitions = "ambitions";
+
+    public const int MaxLength = 32;
+}
+
+/// <summary>
+/// When one person last opened one page. Written by <c>PUT /api/me/visits/ambitions</c>,
+/// read by the Ambitions page's "since you last looked" section. A person with no
+/// row has not looked yet, which is what makes the table safe to add to an
+/// installation that has people already.
+/// </summary>
+/// <remarks>
+/// Keyed by person and page, set with <c>HasKey</c> in <see cref="HatchContext"/>.
+/// <see cref="PersonId"/> is a bare <see cref="Guid"/>, for the reason
+/// <see cref="EfHatchPersonHome.PersonId"/> is one; it names no project, so it has no
+/// query filter.
+/// </remarks>
+[Table("PersonVisits")]
+public class EfHatchPersonVisit
+{
+    public Guid PersonId { get; set; }
+
+    /// <summary>One of <see cref="PersonVisitPage"/>.</summary>
+    [MaxLength(PersonVisitPage.MaxLength)]
+    public required string Page { get; set; }
+
+    public required DateTimeOffset VisitedAt { get; set; }
+}
+
 /// <summary>
 /// One project's logo, stored as bytes in Postgres rather than as a path into a
 /// volume.

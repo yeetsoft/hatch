@@ -1893,6 +1893,23 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("PersonScopeProjects", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPersonVisit", b =>
+                {
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Page")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("VisitedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PersonId", "Page");
+
+                    b.ToTable("PersonVisits", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPlaybook", b =>
                 {
                     b.Property<int>("Id")
