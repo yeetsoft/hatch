@@ -103,7 +103,7 @@ import {
   showsPresses,
 } from '../lib/latestChange';
 import { implementation, isObviated, isSettled, tileFill } from '../lib/columns';
-import { dependencyCandidates } from '../lib/dependencies';
+import { dependencyCandidates, dependencyLookupFilter } from '../lib/dependencies';
 import { filedFromCandidates } from '../lib/filedFrom';
 import { deleteQuestion } from '../lib/deletion';
 import { firstLine } from '../lib/dreams';
@@ -122,6 +122,7 @@ import { canMoveDown, canMoveUp, implementationNote, reordered, writeCapabilityO
 import { CapabilityAddForm, CapabilityEditForm, CapabilityRemoveDialog } from '../components/CapabilityEditor';
 import { homeCardApplies } from '../lib/homeScreen';
 import { useMe } from '../lib/useMe';
+import { findAmbitionAbove, sameSet, servedIds, toggleId, writeServes } from '../lib/serves';
 import { writeNoCode } from '../lib/noCode';
 import { writeReleaseNote } from '../lib/releaseNote';
 import { newestFirst } from '../lib/thread';
@@ -204,6 +205,12 @@ export function IssuePage() {
   const [budget, setBudget] = useState<IssueBudget | null>(null);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [serves, setServes] = useState<ServedCapability[] | null>(null);
+  /* The ambition above an epic and its capabilities, for the tick boxes in
+     `Serves`. Null off an epic, off an epic beneath no ambition, and wherever
+     either read failed - the section then falls back to the read-only list. */
+  const [servable, setServable] = useState<ServableCapabilities | null>(null);
+  const [servesBusy, setServesBusy] = useState(false);
+  const [servesWriteError, setServesWriteError] = useState<string | null>(null);
   /* The speed bump in front of taking a ticket off a runner, and whether the
      clear is in flight. Two flags rather than one, because the dialog stays up
      while the request runs and says so on its own button. */
@@ -343,6 +350,7 @@ export function IssuePage() {
       (err: unknown) => ({ loaded: null, failure: message(err) }),
     );
 
+    let loadedIssue: Issue | null = null;
     try {
       const [loaded, loadedBoard, loadedComments, loadedEvents, loadedDreams, loadedRemanded] = await Promise.all([
         getIssue(key),
@@ -352,6 +360,7 @@ export function IssuePage() {
         getIssueDreams(key),
         getDreams(new URLSearchParams({ remandedFromKey: key, limit: '50' })),
       ]);
+      loadedIssue = loaded;
       setIssue(loaded);
       setBoard(loadedBoard);
       setComments(loadedComments);
@@ -384,6 +393,11 @@ export function IssuePage() {
     setBudgetError(budgeted.failure);
 
     setServes(await serving);
+
+    /* Which capabilities the epic could serve: those of the ambition above it.
+       Read only for an epic that hangs beneath something, and a failure of
+       either read is dropped - the section stays the read-only list. */
+    setServable(await servableAbove(loadedIssue));
 
     const passed = await passing;
     setPasses(passed.loaded);
@@ -645,6 +659,28 @@ export function IssuePage() {
         return true;
       } finally {
         setBudgetBusy(false);
+      }
+    },
+    [key, load],
+  );
+
+  /* Saves what an epic serves through the sibling lib call, which never throws
+     - its refusal goes to `servesWriteError`, inside the section, with the
+     ticks left as the person left them. */
+  const saveServes = useCallback(
+    async (ids: number[]): Promise<boolean> => {
+      setServesWriteError(null);
+      setServesBusy(true);
+      try {
+        const refusal = await writeServes(key, ids);
+        if (refusal !== null) {
+          setServesWriteError(refusal);
+          return false;
+        }
+        await load();
+        return true;
+      } finally {
+        setServesBusy(false);
       }
     },
     [key, load],
@@ -1265,7 +1301,15 @@ export function IssuePage() {
         />
       )}
 
-      <Serves issue={issue} serves={serves} />
+      <Serves
+        issue={issue}
+        serves={serves}
+        servable={servable}
+        canEdit={directory?.me?.kind === 'person'}
+        busy={servesBusy}
+        writeError={servesWriteError}
+        onSave={saveServes}
+      />
 
       <OriginSection issue={issue} board={board} />
 
@@ -1410,6 +1454,9 @@ function Dependencies({
   onRemove: (dependsOnKey: string) => Promise<unknown>;
 }) {
   const candidates = dependencyCandidates(board.issues, issue.key, issue.dependsOnKeys);
+  // Unscoped: an edge may cross a project where a parent may not, so the
+  // lookup is asked about every project rather than the issue's own.
+  const accept = dependencyLookupFilter(board.issues, issue.key, issue.dependsOnKeys);
 
   return (
     <>
@@ -1441,7 +1488,8 @@ function Dependencies({
               allowNone={false}
               placeholder="Add a dependency…"
               candidates={candidates}
-              emptyMessage="Nothing else on the board can be depended on."
+              emptyMessage="Type a key, a number or title words to find an issue."
+              lookup={{ projectIds: [], accept }}
               onChange={onAdd}
             />
           </Field>
@@ -1518,33 +1566,130 @@ function DreamsRemandedTo({ dreams, issue, deferred }: { dreams: Dream[]; issue:
   );
 }
 
+/** The capabilities of the ambition an epic hangs beneath, for the tick boxes. */
+export interface ServableCapabilities {
+  ambitionKey: string;
+  capabilities: Capability[];
+}
+
+/** What `Serves` may offer for `issue`: its ambition's capabilities, or null
+    off an epic with no parent and wherever a read fails. */
+async function servableAbove(issue: Issue | null): Promise<ServableCapabilities | null> {
+  if (!issue || issue.type !== 'epic' || !issue.parentKey) return null;
+
+  try {
+    const ambitionKey = await findAmbitionAbove(issue);
+    if (!ambitionKey) return null;
+
+    return { ambitionKey, capabilities: await getIssueCapabilities(ambitionKey) };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * What an epic serves: each capability it was filed to further, with the
  * ambition it belongs to and whether that capability holds.
  *
- * Read-only - writing what an epic serves stays HA-2491's, on the CLI.
- * Omitted entirely off any type but an epic, and off an epic that serves
- * nothing - the same way FiledSection is omitted when there is nothing to show.
+ * A person reads it as a list of tick boxes, one per capability of the
+ * ambition above the epic, and Save replaces the whole set at once - so an
+ * epic filed by hand can be said to serve something without the CLI. Anybody
+ * else reads the list as it is. Omitted entirely off any type but an epic, and
+ * off an epic that serves nothing unless a person could tick something.
  */
-export function Serves({ issue, serves }: { issue: Issue; serves: ServedCapability[] | null }) {
-  if (issue.type !== 'epic' || !serves?.length) return null;
+export function Serves({
+  issue,
+  serves,
+  servable = null,
+  canEdit = false,
+  busy = false,
+  writeError = null,
+  onSave,
+}: {
+  issue: Issue;
+  serves: ServedCapability[] | null;
+  servable?: ServableCapabilities | null;
+  canEdit?: boolean;
+  busy?: boolean;
+  writeError?: string | null;
+  onSave?: (ids: number[]) => Promise<boolean>;
+}) {
+  const saved = servedIds(serves);
+  const [draft, setDraft] = useState<number[]>(saved);
+  const [known, setKnown] = useState<number[]>(saved);
+
+  // Re-syncs when the served set changes underneath - see Budget. A refusal
+  // leaves the set alone, so the draft stays as the person left it.
+  if (!sameSet(saved, known)) {
+    setKnown(saved);
+    setDraft(saved);
+  }
+
+  if (issue.type !== 'epic') return null;
+
+  if (!(canEdit && servable)) {
+    if (!serves?.length) return null;
+
+    return (
+      <IssueSection id="serves" title="Serves" count={serves.length} className="hatch-ambition-section">
+        <ul className="hatch-progress-list">
+          {serves.map((row) => (
+            <li key={row.capabilityId} className="hatch-progress-row">
+              <Link to={`/issues/${row.ambitionKey}`} className="hatch-plan-key">
+                {row.ambitionKey}
+              </Link>
+              <span className="text-muted">#{row.position}</span>
+              <span className="hatch-progress-title">{row.statement}</span>
+              <Badge tone={capabilityStateTone(row.state)} className="hatch-capability-state">
+                {capabilityStateLabel(row.state)}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      </IssueSection>
+    );
+  }
 
   return (
-    <IssueSection id="serves" title="Serves" count={serves.length} className="hatch-ambition-section">
-      <ul className="hatch-progress-list">
-        {serves.map((row) => (
-          <li key={row.capabilityId} className="hatch-progress-row">
-            <Link to={`/issues/${row.ambitionKey}`} className="hatch-plan-key">
-              {row.ambitionKey}
-            </Link>
-            <span className="text-muted">#{row.position}</span>
-            <span className="hatch-progress-title">{row.statement}</span>
-            <Badge tone={capabilityStateTone(row.state)} className="hatch-capability-state">
-              {capabilityStateLabel(row.state)}
-            </Badge>
-          </li>
-        ))}
-      </ul>
+    <IssueSection id="serves" title="Serves" count={saved.length} className="hatch-ambition-section">
+      <p className="text-muted">
+        The capabilities of <Link to={`/issues/${servable.ambitionKey}`}>{servable.ambitionKey}</Link> this epic is
+        for.
+      </p>
+
+      {servable.capabilities.length === 0 && (
+        <SectionNote kind="empty">This ambition has no capabilities yet.</SectionNote>
+      )}
+
+      {servable.capabilities.length > 0 && (
+        <ul className="hatch-progress-list">
+          {servable.capabilities.map((capability) => (
+            <li key={capability.id} className="hatch-progress-row">
+              <label className="hatch-serves-choice">
+                <input
+                  type="checkbox"
+                  checked={draft.includes(capability.id)}
+                  disabled={busy}
+                  onChange={() => setDraft(toggleId(draft, capability.id))}
+                />
+                <span className="text-muted">#{capability.position}</span>
+                <span className="hatch-progress-title">{capability.statement}</span>
+              </label>
+              <Badge tone={capabilityStateTone(capability.state)} className="hatch-capability-state">
+                {capabilityStateLabel(capability.state)}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {writeError && <SectionNote kind="failed">{writeError}</SectionNote>}
+
+      <div className="hatch-section-actions">
+        <Button disabled={busy || !onSave || sameSet(draft, saved)} onClick={() => void onSave?.(draft)}>
+          Save
+        </Button>
+      </div>
     </IssueSection>
   );
 }

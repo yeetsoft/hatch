@@ -6,7 +6,7 @@ import { getAssignees, getBoard, setPreApproval, setPriority } from '../api/clie
 import type { CommandContext, CommandEnv, IssueView } from '../lib/consoleCommands';
 import { consoleSource } from '../lib/consoleSource';
 import { focusedIssueKey, issueInView } from '../lib/issueInView';
-import { HOME } from '../lib/nav';
+import { BOARD, HOME } from '../lib/nav';
 import { OPEN_QUEUE, scopedPath } from '../lib/scope';
 import { isGoToShortcut, isTypingTarget } from '../lib/shortcuts';
 import { ConsoleContext } from '../lib/useConsole';
@@ -224,7 +224,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     openQueue: () =>
       host
         ? host.openQueue()
-        : navigate(scopedPath(HOME, scope.keys), { replace: pathname === HOME, state: { [OPEN_QUEUE]: true } }),
+        : navigate(scopedPath(BOARD, scope.keys), { replace: pathname === HOME || pathname === BOARD, state: { [OPEN_QUEUE]: true } }),
     changeFilter: (next) => host?.filters.onChange(next),
     newIssue: () => {
       if (host) return host.onNewIssue();

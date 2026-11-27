@@ -11,11 +11,12 @@
    statements of one rule is the usual risk and it is worth taking here: a list
    that offers a row and then rejects the press reads as broken. */
 
+import type { PickedRow } from './pickerLookup';
 import type { IssueCard } from '../types';
 
 /**
- * The cards this issue may be made to wait on: every card except itself, its
- * ancestors, its descendants, and whatever it already waits on.
+ * The keys this issue may not be made to wait on: itself, its ancestors, its
+ * descendants, and whatever it already waits on.
  *
  * Ancestors and descendants both go, and for one reason: a parent is not done
  * until its work is, so an edge either way round between an issue and its own
@@ -24,12 +25,11 @@ import type { IssueCard } from '../types';
  * Not filtered by project. An edge may cross one where a parent may not -
  * containment and ordering are different claims, and two efforts routinely
  * have to land in order.
+ *
+ * Pulled out of `dependencyCandidates` so `dependencyLookupFilter` runs the
+ * same walk rather than a second one that could drift from it.
  */
-export function dependencyCandidates(
-  cards: IssueCard[],
-  key: string,
-  dependsOnKeys: string[],
-): IssueCard[] {
+export function excludedKeys(cards: IssueCard[], key: string, dependsOnKeys: string[]): Set<string> {
   const excluded = new Set<string>([key, ...dependsOnKeys]);
 
   const byKey = new Map(cards.map((card) => [card.key, card]));
@@ -69,5 +69,27 @@ export function dependencyCandidates(
     generation = next;
   }
 
+  return excluded;
+}
+
+/** The cards this issue may be made to wait on: every card not in `excludedKeys`. */
+export function dependencyCandidates(cards: IssueCard[], key: string, dependsOnKeys: string[]): IssueCard[] {
+  const excluded = excludedKeys(cards, key, dependsOnKeys);
   return cards.filter((card) => !excluded.has(card.key));
+}
+
+/**
+ * The same refusal, over a row the lookup found rather than a card the page
+ * holds. A relative among the page's own cards is caught here, exactly as
+ * `dependencyCandidates` catches it; a relative the page cannot see at all -
+ * closed long enough to be off the board - is not, and only the server's own
+ * refusal catches that one, in its own sentence.
+ */
+export function dependencyLookupFilter(
+  cards: IssueCard[],
+  key: string,
+  dependsOnKeys: string[],
+): (row: PickedRow) => boolean {
+  const excluded = excludedKeys(cards, key, dependsOnKeys);
+  return (row) => !excluded.has(row.key);
 }

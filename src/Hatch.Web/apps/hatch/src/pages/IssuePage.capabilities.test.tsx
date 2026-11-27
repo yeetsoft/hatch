@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { Capabilities, EpicsInFlight, Serves } from './IssuePage';
+import { Capabilities, EpicsInFlight, Serves, type ServableCapabilities } from './IssuePage';
 import { DatedAt } from '../components/DatedAt';
 import type { Board, Capability, ChildRollup, Issue, IssueCard, IssueRollup, ServedCapability, Status } from '../types';
 
@@ -42,10 +42,14 @@ const renderCapabilities = (caps: Capability[] | null, b: Board = board(), error
     </MemoryRouter>,
   );
 
-const renderServes = (serves: ServedCapability[] | null, issue: Issue = epic): string =>
+const renderServes = (
+  serves: ServedCapability[] | null,
+  issue: Issue = epic,
+  extra: Partial<React.ComponentProps<typeof Serves>> = {},
+): string =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <Serves issue={issue} serves={serves} />
+      <Serves issue={issue} serves={serves} {...extra} />
     </MemoryRouter>,
   );
 
@@ -215,6 +219,96 @@ describe('Serves', () => {
     expect(html).toContain('Holds');
     expect(html).toContain('Not checked');
     expect(html.indexOf('zeta')).toBeLessThan(html.indexOf('alpha'));
+  });
+});
+
+describe('Serves, edited by a person', () => {
+  const servable: ServableCapabilities = {
+    ambitionKey: 'AER-1',
+    capabilities: [
+      capability({ id: 1, position: 1, statement: 'alpha', state: 'holds' }),
+      capability({ id: 2, position: 2, statement: 'beta', state: 'not_checked' }),
+      capability({ id: 3, position: 3, statement: 'gamma', state: 'cannot_tell' }),
+    ],
+  };
+  const person = { canEdit: true, servable, onSave: async () => true };
+  const checkboxes = (html: string) => html.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? [];
+
+  it('draws every capability of the ambition for an epic that serves nothing, none ticked', () => {
+    const html = renderServes([], epic, person);
+
+    expect(checkboxes(html)).toHaveLength(3);
+    expect(html).not.toContain('checked=""');
+    expect(html).toContain('alpha');
+    expect(html).toContain('gamma');
+    expect(html).toContain('#2');
+    expect(html).toContain('Holds');
+    expect(html).toContain('Not checked');
+  });
+
+  it('ticks only the capabilities the epic serves', () => {
+    const html = renderServes(
+      [{ ambitionKey: 'AER-1', capabilityId: 2, position: 2, statement: 'beta', state: 'not_checked' }],
+      epic,
+      person,
+    );
+
+    const boxes = checkboxes(html);
+    expect(boxes).toHaveLength(3);
+    expect(boxes.filter((b) => b.includes('checked=""'))).toHaveLength(1);
+    expect(boxes[1]).toContain('checked=""');
+  });
+
+  it('names each tick box by its statement, inside one label', () => {
+    const html = renderServes([], epic, person);
+
+    const label = html.slice(html.indexOf('<label'), html.indexOf('</label>'));
+    expect(label).toContain('type="checkbox"');
+    expect(label).toContain('>#1<');
+    expect(label).toContain('>alpha<');
+  });
+
+  it('draws Save disabled while nothing has changed', () => {
+    const html = renderServes([], epic, person);
+
+    const save = html.slice(html.lastIndexOf('<button'), html.indexOf('Save'));
+    expect(save).toContain('disabled');
+  });
+
+  it('shows a refusal as its own sentence', () => {
+    const html = renderServes([], epic, { ...person, writeError: 'capability 9 belongs to another ambition' });
+
+    expect(html).toContain('capability 9 belongs to another ambition');
+  });
+
+  it('says so for an ambition with no capabilities', () => {
+    const html = renderServes([], epic, { ...person, servable: { ambitionKey: 'AER-1', capabilities: [] } });
+
+    expect(html).toContain('no capabilities');
+  });
+
+  it('draws nothing for an epic that serves nothing when the reader is not a person', () => {
+    expect(renderServes([], epic, { canEdit: false, servable })).toBe('');
+  });
+
+  it('reads the list, without tick boxes or Save, when the reader is not a person', () => {
+    const html = renderServes(
+      [{ ambitionKey: 'AER-1', capabilityId: 2, position: 2, statement: 'beta', state: 'not_checked' }],
+      epic,
+      { canEdit: false, servable },
+    );
+
+    expect(html).toContain('beta');
+    expect(html).not.toContain('type="checkbox"');
+    expect(html).not.toContain('Save');
+  });
+
+  it('draws nothing for an epic beneath no ambition that serves nothing', () => {
+    expect(renderServes([], epic, { canEdit: true, servable: null })).toBe('');
+  });
+
+  it('draws nothing on an ambition', () => {
+    expect(renderServes([], ambition, person)).toBe('');
   });
 });
 

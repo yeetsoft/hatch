@@ -73,10 +73,20 @@ Both show on the issue page. An ambition's page draws a Capabilities
 section above Progress: one row per capability, in order, with its statement and
 how to tell, its state as one of "Holds", "Does not hold", "Cannot tell" or "Not
 checked", what the newest verdict looked at, its sha, its author and its date, and the
-epics that serve it. An epic's page draws a Serves section naming each
-capability it serves, with the ambition it belongs to and that capability's
-state. The section is left out when the epic serves nothing, and no other type
-draws either one. Each state is a pill, green, red, amber or grey, and looks the
+epics that serve it. An ambition with none says so and shows the `hatch capability add`
+command to start one. An epic's page draws a Serves section. For a person, an
+epic that hangs beneath an ambition, at any depth, always draws it, even when
+the epic serves nothing: it lists every capability of that ambition with a tick
+box, its number, its statement and its state, the ones the epic serves ticked.
+Change the ticks and press **Save**, and the whole set is sent at once and
+replaces what the epic served; the section then shows the saved set, and the
+ambition's Capabilities section and the Ambitions page show it too. A refusal
+appears as a sentence in the section and leaves the ticks as they were. Anybody
+who is not a person, such as a runner's key, reads the list as before: each
+capability the epic serves, with the ambition it belongs to and that
+capability's state, with no tick boxes and no Save, and no section at all when
+the epic serves nothing. An epic beneath no ambition draws nothing when it
+serves nothing, and no other type draws either section. Each state is a pill, green, red, amber or grey, and looks the
 same on Serves, on each verdict in Passes and for the outcome in Latest change.
 
 A person signed in, or working at the console with the wall off, can add, edit,
@@ -325,14 +335,18 @@ API is shown beside the field as its own sentence. If the budget cannot be read,
 ## The Ambitions page
 
 The Ambitions page, at `/ambitions`, is a top-level link after the magnifying
-glass on the nav bar, and in the phone menu. It lists every ambition across every
+glass on the nav bar, and in the phone menu, except for a person who made it
+their home screen (below): the logo is theirs to Ambitions, and a **Board** link
+stands in its place on the bar and in the phone menu. It lists every ambition across every
 project, in one read, each with where it stands. It follows the tab's
 project scope the same way Plan and Ballot do, and nothing is stored for it.
 
 A person may make this page their home screen, in the **Home screen** card
 on the Settings page. The root address (`/`) then opens Ambitions, and the
 **Hatch** logo leads here too; the board is the default, and what a person
-who has chosen nothing gets. A key reads the choice (`home` on `GET /me`)
+who has chosen nothing gets. The board is never lost to the choice: it has
+its own address, `/board`, which the **Board** link, the console's
+**Go to Board** and the queue command all open. A key reads the choice (`home` on `GET /me`)
 but cannot change it - `PUT /me/home` takes a person only. See [the board
 and its columns](the-board-and-its-columns) and
 [the API reference](api-reference).
@@ -586,6 +600,11 @@ analysed. An edge clears only once the issue it names reaches a terminal
 column, merged rather than merely in review, and a dependency an ancestor
 holds reaches everything below it — a task under a blocked story is blocked
 too.
+
+Add a dependency's picker asks the server for what is typed, after a short
+pause, and lists what it finds below the board's own candidates - any issue
+by key, number or title words, closed ones included. The page's own rows
+never wait on a request; a lookup only ever adds to them.
 
 ## One pull request
 
