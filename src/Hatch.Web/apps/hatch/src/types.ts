@@ -1707,6 +1707,29 @@ export interface SearchResult {
   hits: SearchHit[];
 }
 
+/** One row of GET /api/go-to - mirrors GoToRowDto: an issue a typed number or key
+    names, with its column, so the console can draw it without a card. */
+export interface GoToRowDto {
+  key: string;
+  projectKey: string;
+  number: number;
+  type: string;
+  title: string;
+  /** Outside the projects asked for, and listed because its whole key was typed. */
+  outOfScope: boolean;
+  statusId: number;
+  statusName: string;
+  /** The column's colour, as #rrggbb. */
+  statusColor: string;
+}
+
+/** The server's answer to a go-to query - mirrors GoToDto. There is no total:
+     `more` says rows were left out past the limit. */
+export interface GoToAnswer {
+  rows: GoToRowDto[];
+  more: boolean;
+}
+
 // ---- Dreams ----
 
 /** One dream: a line somebody wanted said, leaning toward a project or loose.

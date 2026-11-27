@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GO_TO_LIMIT, SEARCH_ROW, entryKeys, goToRows, goToStatus, keepHighlight, whereOnBoard } from './goTo';
+import { GO_TO_LIMIT, SEARCH_ROW, entryKeys, goToRows, goToStatus, keepHighlight, pastedKeyTarget, whereOnBoard, wholeKey } from './goTo';
 import type { IssueCard, Status } from '../types';
 
 /* Spread onto rather than written whole, so a new field on IssueCard is one
@@ -243,7 +243,7 @@ describe('goToRows: the tab scope', () => {
 });
 
 describe('keepHighlight', () => {
-  const rows = goToRows(numbered('AER', 1, 2, 3), 'aer').rows;
+  const rows = goToRows(numbered('AER', 1, 2, 3), 'aer').rows.map((r) => ({ key: r.card.key }));
 
   it('keeps the same key while it is still listed', () => {
     expect(keepHighlight(rows, 'AER-2')).toBe('AER-2');
@@ -261,7 +261,7 @@ describe('keepHighlight', () => {
 
 describe('entryKeys', () => {
   it('lists the rows then the search row, for a non-blank query', () => {
-    const rows = goToRows(numbered('AER', 1, 2, 3), 'aer').rows;
+    const rows = goToRows(numbered('AER', 1, 2, 3), 'aer').rows.map((r) => ({ key: r.card.key }));
     expect(entryKeys(rows, 'aer')).toEqual(['AER-1', 'AER-2', 'AER-3', SEARCH_ROW]);
   });
 
@@ -300,6 +300,17 @@ describe('goToStatus', () => {
   it('says so when the board read failed', () => {
     expect(goToStatus('', 0, 0, 'failed')).toBe('could not load issues');
     expect(goToStatus('aer', 0, 0, 'failed')).toBe('could not load issues');
+  });
+
+  it('says Loading… for a lookup still out only while nothing is drawn', () => {
+    expect(goToStatus('455', 0, 0, 'ready', { pending: true })).toBe('Loading…');
+    expect(goToStatus('455', 3, 3, 'ready', { pending: true })).toBe('3 issues');
+  });
+
+  it('says keep typing when the server left rows out', () => {
+    expect(goToStatus('4', 50, 111, 'ready', { more: true })).toBe('50 of 111 — keep typing');
+    expect(goToStatus('4', 50, 50, 'ready', { more: true })).toBe('50+ — keep typing');
+    expect(goToStatus('4', 3, 3, 'ready', { more: false })).toBe('3 issues');
   });
 
   it('is unchanged once ready', () => {
@@ -342,5 +353,48 @@ describe('goToRows: an issue the server folded off the board', () => {
 
   it('still finds the cards it was handed, so the empty result is the fold and not the fixture', () => {
     expect(keys(board, 'AER-4')).toEqual(['AER-4']);
+  });
+});
+
+describe('wholeKey', () => {
+  it('is the key, upper-cased, for one whole key', () => {
+    expect(wholeKey('HA-455')).toBe('HA-455');
+    expect(wholeKey('ha-455')).toBe('HA-455');
+    expect(wholeKey(' HA-455 ')).toBe('HA-455');
+    expect(wholeKey('FIL-1')).toBe('FIL-1');
+    expect(wholeKey('h2-7')).toBe('H2-7');
+  });
+
+  it.each(['HA455', 'HA-', '-455', '455', 'HA-455 x', 'HA-0', 'HA-045', 'HA-455-1', 'H A-455', '', '   ', 'HA-12345678901'])(
+    'is not a key: %j',
+    (text) => {
+      expect(wholeKey(text)).toBeNull();
+    },
+  );
+});
+
+describe('pastedKeyTarget', () => {
+  const board = [card('HA-455'), card('HA-456')];
+
+  it('is the card the board holds, matched in any case', () => {
+    expect(pastedKeyTarget('ha-455', false, board)).toEqual({ card: board[0] });
+  });
+
+  it('is the key alone when the board holds no card for it', () => {
+    expect(pastedKeyTarget('HA-9000', false, board)).toEqual({ key: 'HA-9000' });
+  });
+
+  it('is a key outside the tab scope all the same: nothing is checked first', () => {
+    expect(pastedKeyTarget('ZZ-3', false, board)).toEqual({ key: 'ZZ-3' });
+  });
+
+  it('is null once the highlight was moved, even for a whole key', () => {
+    expect(pastedKeyTarget('HA-455', true, board)).toBeNull();
+  });
+
+  it('is null for a query that is not one whole key', () => {
+    expect(pastedKeyTarget('455', false, board)).toBeNull();
+    expect(pastedKeyTarget('HA-455 x', false, board)).toBeNull();
+    expect(pastedKeyTarget('', false, board)).toBeNull();
   });
 });

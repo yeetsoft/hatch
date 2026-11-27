@@ -12641,7 +12641,8 @@ button.hatch-option.chosen {
   white-space: nowrap;
 }
 
-.hatch-omni-filtered {
+.hatch-omni-filtered,
+.hatch-omni-pending {
   flex: none;
   color: var(--console-dim);
   white-space: nowrap;

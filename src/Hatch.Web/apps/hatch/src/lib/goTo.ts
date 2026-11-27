@@ -24,6 +24,13 @@ import type { IssueCard, Status } from '../types';
  */
 export const GO_TO_LIMIT = 50;
 
+/**
+ * How long typing must pause before the console asks the server for the rows it
+ * does not hold. The Search page waits 300; the console is for a key already in
+ * mind, so it waits a little less.
+ */
+export const GO_TO_DEBOUNCE_MS = 250;
+
 /** A run of characters in the key or the title, half open: [start, end). */
 export interface Mark {
   start: number;
@@ -50,14 +57,14 @@ export interface GoToResult {
 const isAlnum = (ch: string) => /[a-z0-9]/i.test(ch);
 
 /** Letters and digits only, lower case: the form a key and a query are compared in. */
-const squash = (text: string) => text.replace(/[^a-z0-9]/gi, '').toLowerCase();
+export const squash = (text: string) => text.replace(/[^a-z0-9]/gi, '').toLowerCase();
 
 /**
  * By number, then by project, so every project's issue 1 comes before any
  * issue 10. On a board with one project this is `compareIssueKeys`. A key that
  * does not split goes last, by text.
  */
-function compareByNumber(a: string, b: string): number {
+export function compareByNumber(a: string, b: string): number {
   const left = splitKey(a);
   const right = splitKey(b);
 
@@ -70,7 +77,7 @@ function compareByNumber(a: string, b: string): number {
  * The marks for a key that matched by letters and digits: from the start to just
  * past the nth letter or digit, which carries them across the hyphen.
  */
-function prefixMarks(key: string, count: number): Mark[] {
+export function prefixMarks(key: string, count: number): Mark[] {
   let seen = 0;
   for (let i = 0; i < key.length; i++) {
     if (isAlnum(key[i]) && ++seen === count) return [{ start: 0, end: i + 1 }];
@@ -79,7 +86,7 @@ function prefixMarks(key: string, count: number): Mark[] {
 }
 
 /** Every occurrence of every term in the title, sorted and merged. */
-function titleMarks(title: string, query: string): Mark[] {
+export function titleMarks(title: string, query: string): Mark[] {
   const lower = title.toLowerCase();
   const found: Mark[] = [];
   for (const term of query.toLowerCase().split(/\s+/).filter(Boolean)) {
@@ -99,6 +106,28 @@ function titleMarks(title: string, query: string): Mark[] {
 }
 
 /**
+ * The marks for a key a query names, or null when the query does not name it.
+ * Digits alone are a number prefix; any other single word is a prefix of the key
+ * on letters and digits alone. Several words name no key.
+ */
+export function keyMarks(key: string, query: string): Mark[] | null {
+  const typed = query.trim();
+  if (!typed || /\s/.test(typed)) return null;
+
+  if (/^\d+$/.test(typed)) {
+    const parts = splitKey(key);
+    if (!parts || !String(parts.index).startsWith(typed)) return null;
+
+    const tail = key.lastIndexOf('-') + 1;
+    return [{ start: tail, end: tail + typed.length }];
+  }
+
+  const wanted = squash(typed);
+  if (!wanted || !squash(key).startsWith(wanted)) return null;
+  return prefixMarks(key, wanted.length);
+}
+
+/**
  * The issues a query could mean.
  *
  * - Empty or whitespace only: nothing.
@@ -115,8 +144,15 @@ function titleMarks(title: string, query: string): Mark[] {
  * `outOfScope`: `fil-1` is FIL-1 and not FIL-10.
  */
 export function goToRows(all: IssueCard[], query: string, scopeKeys: string[] = []): GoToResult {
+  const found = goToFound(all, query, scopeKeys);
+  return { rows: found.slice(0, GO_TO_LIMIT), total: found.length };
+}
+
+/** Every row `goToRows` would draw, before the cap: the whole-key row outside the
+    scope, then the keys, then the titles. */
+export function goToFound(all: IssueCard[], query: string, scopeKeys: string[] = []): GoToRow[] {
   const typed = query.trim();
-  if (!typed) return { rows: [], total: 0 };
+  if (!typed) return [];
 
   const cards = cardsInScope(all, scopeKeys);
   const outside: GoToRow[] = [];
@@ -130,22 +166,9 @@ export function goToRows(all: IssueCard[], query: string, scopeKeys: string[] = 
   const keyRows: GoToRow[] = [];
   const listed = new Set<string>();
 
-  if (/^\d+$/.test(typed)) {
-    for (const card of cards) {
-      const parts = splitKey(card.key);
-      if (!parts || !String(parts.index).startsWith(typed)) continue;
-
-      const tail = card.key.lastIndexOf('-') + 1;
-      keyRows.push({ card, field: 'key', marks: [{ start: tail, end: tail + typed.length }], outOfScope: false });
-    }
-  } else if (!/\s/.test(typed)) {
-    const wanted = squash(typed);
-    if (wanted) {
-      for (const card of cards) {
-        if (!squash(card.key).startsWith(wanted)) continue;
-        keyRows.push({ card, field: 'key', marks: prefixMarks(card.key, wanted.length), outOfScope: false });
-      }
-    }
+  for (const card of cards) {
+    const marks = keyMarks(card.key, typed);
+    if (marks) keyRows.push({ card, field: 'key', marks, outOfScope: false });
   }
 
   keyRows.sort((a, b) => compareByNumber(a.card.key, b.card.key));
@@ -156,8 +179,7 @@ export function goToRows(all: IssueCard[], query: string, scopeKeys: string[] = 
     .sort((a, b) => compareIssueKeys(a.key, b.key))
     .map((card) => ({ card, field: 'title', marks: titleMarks(card.title, typed), outOfScope: false }));
 
-  const found = [...outside, ...keyRows, ...titleRows];
-  return { rows: found.slice(0, GO_TO_LIMIT), total: found.length };
+  return [...outside, ...keyRows, ...titleRows];
 }
 
 /**
@@ -166,23 +188,41 @@ export function goToRows(all: IssueCard[], query: string, scopeKeys: string[] = 
  * rather than by index so the board's refresh does not move the highlight to a
  * different issue.
  */
-export function keepHighlight(rows: GoToRow[], key: string | null): string | null {
-  if (key !== null && rows.some((r) => r.card.key === key)) return key;
-  return rows[0]?.card.key ?? null;
+export function keepHighlight(rows: { key: string }[], key: string | null): string | null {
+  if (key !== null && rows.some((r) => r.key === key)) return key;
+  return rows[0]?.key ?? null;
 }
 
 /** Where the issues the console lists come from: a host's, already in hand, or
     a read of the board that may not have landed. */
 export type GoToLoad = 'ready' | 'loading' | 'failed';
 
+/** What the lookup has said, for the status line. */
+export interface GoToLookup {
+  /** The server's answer left rows out past its limit. */
+  more?: boolean;
+  /** A request is out. */
+  pending?: boolean;
+}
+
 /** The status line's left half. A read still out, or failed, says so before
-    anything about the query: "no issue matches" would not be true yet. */
-export function goToStatus(query: string, shown: number, total: number, load: GoToLoad = 'ready'): string {
+    anything about the query: "no issue matches" would not be true yet. A lookup
+    still out says so only while there is nothing to draw: rows already listed
+    are real. */
+export function goToStatus(
+  query: string,
+  shown: number,
+  total: number,
+  load: GoToLoad = 'ready',
+  lookup: GoToLookup = {},
+): string {
   if (load === 'loading') return 'Loading…';
   if (load === 'failed') return 'could not load issues';
   if (!query.trim()) return 'type a key, a number, or words from a title';
+  if (lookup.pending && shown === 0) return 'Loading…';
   if (total === 0) return 'no issue matches';
   if (shown < total) return `${shown} of ${total} — keep typing`;
+  if (lookup.more) return `${shown}+ — keep typing`;
   return total === 1 ? '1 issue' : `${total} issues`;
 }
 
@@ -209,8 +249,40 @@ export const SEARCH_ROW = '#search';
 
 /** The console's full highlight order: every row's key, then `SEARCH_ROW` when
     the query is non-blank. */
-export function entryKeys(rows: GoToRow[], query: string): string[] {
-  const keys = rows.map((row) => row.card.key);
+export function entryKeys(rows: { key: string }[], query: string): string[] {
+  const keys = rows.map((row) => row.key);
   if (searchPath(query) !== null) keys.push(SEARCH_ROW);
   return keys;
+}
+
+/**
+ * The key a query is, when the whole of it is one: `HA-455` or `ha-455`, with
+ * the hyphen, around which spaces are ignored. Upper-cased. Null for anything
+ * else - `HA455`, `HA-`, `455`, `HA-455 x`. The project and the number are not
+ * checked against anything: the issue page says when a key names nothing.
+ *
+ * Not `splitKey`, which takes any text before the last hyphen. The ten-digit cap
+ * is the one the project numbers' listing uses.
+ */
+export function wholeKey(query: string): string | null {
+  const hit = /^([A-Za-z][A-Za-z0-9]*)-([1-9]\d{0,9})$/.exec(query.trim());
+  return hit ? `${hit[1]}-${hit[2]}`.toUpperCase() : null;
+}
+
+/**
+ * Where Enter goes when the person pasted a whole key and did not move the
+ * highlight: the card the board holds for it, else the key alone, which the
+ * console opens without asking the server first. Null when the highlight was
+ * moved, or the query is not one whole key: Enter then takes the highlighted row.
+ */
+export function pastedKeyTarget(
+  query: string,
+  moved: boolean,
+  cards: IssueCard[],
+): { card: IssueCard } | { key: string } | null {
+  if (moved) return null;
+  const key = wholeKey(query);
+  if (key === null) return null;
+  const card = cards.find((c) => c.key.toUpperCase() === key);
+  return card ? { card } : { key };
 }
