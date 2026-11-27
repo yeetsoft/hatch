@@ -5910,15 +5910,16 @@ input.hatch-inline-title-input {
 
 /* ---- The Ambitions page ----
 
-   One card per ambition, in three parts: the head, the capability bar, and the
-   epics in flight. Side by side on a desk, stacked on a phone. The bar's
+   One card per ambition, in four parts: the head, the capability bar, the
+   epics in flight, and what is on the reader. Side by side on a desk, stacked
+   on a phone. The bar's
    segments grow by their counts from a zero basis, so the widths are in
    proportion without anything being summed. The legend's words carry the
    meaning; the colours decorate them.
 
-   The three columns are set once, on the list, and every card reads them, so
+   The four columns are set once, on the list, and every card reads them, so
    a part starts at the same place on every card whatever the card holds. The
-   three first lines - the title and the two headings - share one size,
+   four first lines - the title and the three headings - share one size,
    weight and line, and what follows each is spaced from the one margin-top,
    so they sit level across a card.
 
@@ -5952,7 +5953,7 @@ input.hatch-inline-title-input {
 }
 
 .hatch-ambition-list {
-  --ambition-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+  --ambition-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -6019,6 +6020,41 @@ input.hatch-inline-title-input {
 .hatch-ambition-why {
   font-size: var(--t-label);
   color: var(--muted);
+}
+
+/* What the ambition is for, in ink, under the sentence on its stage. */
+.hatch-ambition-summary {
+  font-size: var(--t-label);
+  color: var(--ink);
+}
+
+/* The fourth part: how many decisions wait on the reader, then what the
+   ambition has cost. The count is bold with the link to the ballot in the
+   accent and underlined, as the tile's own link is; the swatch is the legend's
+   "waiting on a person" colour. The budget line is muted until it is spent, and
+   then bold ink. */
+.hatch-ambition-decisions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: var(--t-label);
+  font-weight: 700;
+}
+
+.hatch-ambition-decisions > a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.hatch-ambition-none,
+.hatch-ambition-budget {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.hatch-ambition-budget-spent {
+  font-weight: 700;
+  color: var(--ink);
 }
 
 /* The stage, as a soft pill: money spent or work stopped in the warning fill,
@@ -6220,7 +6256,8 @@ input.hatch-inline-title-input {
     grid-template-columns: 1fr;
   }
 
-  .hatch-ambition-tile-link {
+  .hatch-ambition-tile-link,
+  .hatch-ambition-decisions > a {
     display: inline-flex;
     align-items: center;
     min-height: 44px;

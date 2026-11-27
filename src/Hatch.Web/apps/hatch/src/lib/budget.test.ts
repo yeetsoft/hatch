@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { setIssueBudget } from '../api/client';
 import type { IssueBudget } from '../types';
-import { barFraction, budgetDraft, budgetRequest, holdsLine, percentSpent, unpricedLine, writeBudget } from './budget';
+import {
+  barFraction,
+  budgetDraft,
+  budgetRequest,
+  holdsLine,
+  percentSpent,
+  rowBudgetLine,
+  unpricedLine,
+  writeBudget,
+} from './budget';
 
 vi.mock('../api/client', () => ({ setIssueBudget: vi.fn() }));
 
@@ -63,6 +72,34 @@ describe('barFraction', () => {
 
   it('is 0 with no budget', () => {
     expect(barFraction(budget(null, 12))).toBe(0);
+  });
+});
+
+describe('rowBudgetLine', () => {
+  it('is the percent spent against a budget', () => {
+    expect(rowBudgetLine(budget(100, 41))).toBe('41% spent');
+  });
+
+  it('is 0% before anything is spent', () => {
+    expect(rowBudgetLine(budget(100, 0))).toBe('0% spent');
+  });
+
+  it('is the dollars spent where there is no budget', () => {
+    expect(rowBudgetLine(budget(null, 12.5))).toBe('$12.50 spent');
+    expect(rowBudgetLine(budget(null, 0))).toBe('$0 spent');
+  });
+
+  it('says the budget is used up, with the percent over 100, once it is spent', () => {
+    expect(rowBudgetLine(budget(50, 52))).toBe('Budget used up: 104% spent');
+    expect(rowBudgetLine(budget(50, 50))).toBe('Budget used up: 100% spent');
+  });
+
+  it('says only that the budget is used up where there is no percent to give', () => {
+    expect(rowBudgetLine({ budgetUsd: 0, spentUsd: 0, unpricedSessions: 0, spent: true })).toBe('Budget used up');
+  });
+
+  it('leaves out the sessions that carried no price', () => {
+    expect(rowBudgetLine({ ...budget(100, 41), unpricedSessions: 3 })).toBe('41% spent');
   });
 });
 

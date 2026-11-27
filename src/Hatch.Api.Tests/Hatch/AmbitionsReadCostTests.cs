@@ -13,7 +13,9 @@ namespace Hatch.Api.Tests.Hatch;
 ///
 /// <para>Both seeds hold an ambition in the implementation column with a budget,
 /// an epic and a finished pass, so every read that happens only for such a row
-/// happens at both sizes. The twenty are spread over every column.</para>
+/// happens at both sizes. The twenty are spread over every column. Every ambition
+/// has a description, and every epic a hold question, so the summary, the spend and
+/// the decisions of every row are read at both sizes too (HA-2846).</para>
 ///
 /// <para>It points at <c>HATCH_TEST_DATABASE_URL</c>, which is emptied on every
 /// seed, so it must never name a database anybody uses.</para>
@@ -55,6 +57,8 @@ public class AmbitionsReadCostTests
 
             var rows = result.Value ?? throw new InvalidOperationException("the read was refused");
             Assert.Equal(ambitions, rows.Length);
+            // Each row says its own: the summary, the decision under it and the 2.00 its work cost.
+            Assert.All(rows, r => Assert.Equal(("What this one is for.", 1, 2m), (r.Summary, r.Decisions, r.Budget.SpentUsd)));
             // The reads that happen only for a row in the implementation column ran.
             Assert.Contains(rows, r => r.Stage == AmbitionStage.BudgetSpent);
         });
@@ -66,7 +70,8 @@ public class AmbitionsReadCostTests
     /// The ambitions, dealt round the columns starting at the implementation one.
     /// Each has a capability that holds, an epic that serves it and a work log
     /// row; those in the implementation column have a budget their work has spent
-    /// and a pass behind them.
+    /// and a pass behind them. Each ambition has a description and each epic a hold
+    /// question nobody has answered.
     /// </summary>
     private static async Task SeedAsync(string connectionString, int ambitions)
     {
@@ -84,9 +89,9 @@ public class AmbitionsReadCostTests
         EfHatchStatus[] columns = [doing, todo, review, done, shelved];
         var number = 0;
 
-        EfHatchIssue Issue(string type, int statusId, long? parentId = null, decimal? budget = null) => new()
+        EfHatchIssue Issue(string type, int statusId, long? parentId = null, decimal? budget = null, string description = "") => new()
         {
-            ProjectId = project.Id, Number = ++number, Type = type, Title = $"{type} {number}", Description = "",
+            ProjectId = project.Id, Number = ++number, Type = type, Title = $"{type} {number}", Description = description,
             StatusId = statusId, Rank = number, ParentId = parentId, BudgetUsd = budget,
             CreatedBy = "operator", CreatedAt = Now, UpdatedAt = Now,
         };
@@ -94,7 +99,7 @@ public class AmbitionsReadCostTests
         for (var n = 0; n < ambitions; n++)
         {
             var column = columns[n % columns.Length];
-            var ambition = Issue("ambition", column.Id, budget: column == doing ? 1m : null);
+            var ambition = Issue("ambition", column.Id, budget: column == doing ? 1m : null, description: "# Aim\n\nWhat this one is for. Then the detail.");
             db.Issues.Add(ambition);
             await db.SaveChangesAsync();
 
@@ -108,6 +113,11 @@ public class AmbitionsReadCostTests
             await db.SaveChangesAsync();
 
             db.CapabilityLinks.Add(new EfHatchCapabilityLink { CapabilityId = capability.Id, IssueId = epic.Id, Actor = "operator", At = Now });
+            db.Comments.Add(new EfHatchComment
+            {
+                IssueId = epic.Id, Author = "hatch-agent", Body = "which one?", Kind = EfHatchComment.Question,
+                Level = QuestionLevels.HoldName, CreatedAt = Now,
+            });
             db.CapabilityVerdicts.Add(new EfHatchCapabilityVerdict
             {
                 CapabilityId = capability.Id, Verdict = EfHatchCapabilityVerdict.Holds, LookedAt = "the page",

@@ -1,5 +1,8 @@
+using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Tests.Hatch;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Xunit.Abstractions;
@@ -23,8 +26,17 @@ namespace Hatch.Api.Tests.E2e;
 /// whose newest verdict does not hold. Both are left in the column they were filed in,
 /// past the one the shaping row shapes in, so both are ready. A third is moved
 /// into the implementation column, a fourth into a terminal one, and a fifth is
-/// filed with no capability. Everything is filed over plain HTTP,
-/// rather than anything written straight to the database.</para>
+/// filed with no capability. Everything is filed over plain HTTP, except the
+/// work log rows, which are written through the host's services as
+/// <see cref="AmbitionBudgetPageTests"/> writes its own.</para>
+///
+/// <para>HA-2846 adds what a row says beside its stage: the first ambition has a
+/// description, a budget of 100 and 41.00 spent, so it reads its summary, one
+/// decision (the epic's question) and "41% spent"; the second has no description, no
+/// budget and 12.50 spent, so it reads "No decision waits on you." and "$12.50 spent"; the
+/// done one has a budget of 1 and 2.00 spent, and reads "Budget used up: 200% spent".
+/// Each row has four parts, which start at the same places on every row at the desktop
+/// profile and stack on the phone.</para>
 ///
 /// <para>HA-2842 adds two more cases, each at both profiles: a person presses
 /// <b>New ambition</b> in the heading, sees the one project picked, types the
@@ -59,6 +71,10 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     private const string TitleRunning = "Stock counts are never a day old";
 
     private const string TitleDone = "Invoices go out the day an order ships";
+
+    private const string DescriptionA = "Partners place and change orders on their own. Staff only step in when asked.";
+
+    private const string SummaryA = "Partners place and change orders on their own.";
 
     /// <summary>
     /// Every row, both tiles and the page's width against the viewport's, read in
@@ -114,6 +130,26 @@ public class AmbitionsPageTests(ITestOutputHelper output)
               shown: row.checkVisibility(),
               project: row.querySelector('.hatch-plan-project')?.textContent?.trim() ?? '',
               headings: texts(row, 'h3'),
+              summary: row.querySelector('.hatch-ambition-summary')?.textContent?.trim() ?? null,
+              summaryBelowWhy: (() => {
+                const why = row.querySelector('.hatch-ambition-why');
+                const summary = row.querySelector('.hatch-ambition-summary');
+                return why && summary ? summary.getBoundingClientRect().top >= why.getBoundingClientRect().bottom - 0.5 : null;
+              })(),
+              decisions: (() => {
+                const a = row.querySelector('.hatch-ambition-decisions a');
+                if (!a) return null;
+                const box = a.getBoundingClientRect();
+                return {
+                  text: (a.textContent ?? '').trim(),
+                  href: a.getAttribute('href') ?? '',
+                  height: box.height,
+                  underline: getComputedStyle(a).textDecorationLine,
+                };
+              })(),
+              none: row.querySelector('.hatch-ambition-none')?.textContent?.trim() ?? null,
+              budget: row.querySelector('.hatch-ambition-budget')?.textContent?.trim() ?? null,
+              budgetSpent: !!row.querySelector('.hatch-ambition-budget-spent'),
               legend: texts(row, '.hatch-ambition-legend li'),
               parts: [...row.querySelectorAll(':scope > .hatch-ambition-part')].map(place),
               firstLines: [row.querySelector('.hatch-ambition-title'), ...row.querySelectorAll('h3')].map(place),
@@ -380,7 +416,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
 
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
-            var seeded = await deadline.BoundAsync("filing five ambitions in two projects", () => SeedAsync(baseUrl));
+            var seeded = await deadline.BoundAsync("filing five ambitions in two projects", () => SeedAsync(baseUrl, harness.Services));
 
             await harness.OpenAsync(deadline, baseUrl, "/ambitions");
             await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-strip");
@@ -399,6 +435,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
             var rowB = rows.Single(r => r.GetProperty("title").GetString() == seeded.TitleB);
             AssertRowA(rowA, seeded);
             AssertRowB(rowB, seeded);
+            AssertWhatIsOnYou(rows, seeded, phone: profile is not null);
             if (profile is null)
                 AssertRowsLineUp(rowA, rowB);
             else
@@ -488,7 +525,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     private static void AssertRowA(JsonElement row, Seeded s)
     {
         Assert.Equal("AMA", row.GetProperty("project").GetString());
-        Assert.Equal(["4 capabilities", "In flight, 2 of 1"], Strings(row, "headings"));
+        Assert.Equal(["4 capabilities", "In flight, 2 of 1", "On you"], Strings(row, "headings"));
         Assert.Equal(["1 hold", "1 in flight", "1 waiting on a person", "1 not started"], Strings(row, "legend"));
         Assert.Equal("2 open, runs 1 at once", row.GetProperty("note").GetString());
 
@@ -502,13 +539,59 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     private static void AssertRowB(JsonElement row, Seeded s)
     {
         Assert.Equal("AMB", row.GetProperty("project").GetString());
-        Assert.Equal(["2 capabilities", "In flight, 1 of 2"], Strings(row, "headings"));
+        Assert.Equal(["2 capabilities", "In flight, 1 of 2", "On you"], Strings(row, "headings"));
         Assert.Equal(["1 in flight", "1 not started"], Strings(row, "legend"));
         Assert.Equal("1 open, runs 2 at once", row.GetProperty("note").GetString());
 
         var epic = Assert.Single(row.GetProperty("epics").EnumerateArray());
         Assert.StartsWith("AMA-", epic.GetProperty("key").GetString());
         AssertEpic(epic, s.EpicTitle3, s.EpicColumn3, "#2");
+    }
+
+    /// <summary>
+    /// HA-2846: each row's summary, its count of decisions and the link to the ballot, the
+    /// words when none waits, and the one budget line, read from what the page drew. The
+    /// ballot link is a finger-sized target on the phone and underlined at both profiles.
+    /// </summary>
+    private void AssertWhatIsOnYou(List<JsonElement> rows, Seeded s, bool phone)
+    {
+        JsonElement RowOf(string title) => rows.Single(r => r.GetProperty("title").GetString() == title);
+        string? Text(JsonElement row, string property) =>
+            row.GetProperty(property).ValueKind == JsonValueKind.Null ? null : row.GetProperty(property).GetString();
+
+        var a = RowOf(s.TitleA);
+        Assert.Equal(SummaryA, Text(a, "summary"));
+        Assert.True(a.GetProperty("summaryBelowWhy").GetBoolean(), "the summary is not under the stage sentence");
+        var link = a.GetProperty("decisions");
+        Assert.Equal("1 decision", link.GetProperty("text").GetString());
+        Assert.EndsWith("/ballot", link.GetProperty("href").GetString());
+        Assert.Equal("underline", link.GetProperty("underline").GetString());
+        if (phone)
+            Assert.True(link.GetProperty("height").GetDouble() >= 44 - Tolerance, $"the ballot link is {link.GetProperty("height")} tall");
+        Assert.Null(Text(a, "none"));
+        Assert.Equal("41% spent", Text(a, "budget"));
+        Assert.False(a.GetProperty("budgetSpent").GetBoolean());
+
+        var b = RowOf(s.TitleB);
+        Assert.Null(Text(b, "summary"));
+        Assert.Equal(JsonValueKind.Null, b.GetProperty("decisions").ValueKind);
+        Assert.Equal("No decision waits on you.", Text(b, "none"));
+        Assert.Equal("$12.50 spent", Text(b, "budget"));
+        Assert.False(b.GetProperty("budgetSpent").GetBoolean());
+
+        var done = RowOf(TitleDone);
+        Assert.Equal("Budget used up: 200% spent", Text(done, "budget"));
+        Assert.True(done.GetProperty("budgetSpent").GetBoolean());
+
+        foreach (var title in new[] { TitleRunning, TitleDraft })
+        {
+            var quiet = RowOf(title);
+            Assert.Equal("No decision waits on you.", Text(quiet, "none"));
+            Assert.Equal("$0 spent", Text(quiet, "budget"));
+        }
+
+        output.WriteLine(
+            $"on you: A {link.GetProperty("text")} -> {link.GetProperty("href")}, {Text(a, "budget")}; B {Text(b, "none")} {Text(b, "budget")}; done {Text(done, "budget")}");
     }
 
     /// <summary>HA-2839, HA-2847: each row's left and right edges are the two tiles', taken together, from the elements' own boxes.</summary>
@@ -547,8 +630,8 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// HA-2701 at the desktop profile: each part starts at the same left on
-    /// both rows, the three first lines share a top within a row, the column
+    /// HA-2701 and HA-2846 at the desktop profile: each of the four parts starts at the
+    /// same left on both rows, the four first lines share a top within a row, the column
     /// pills of one row's epics share a left, and the first epic line draws no
     /// rule above it. The numbers go to the output so a reader sees them.
     /// </summary>
@@ -556,20 +639,22 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     {
         var partsA = Places(rowA, "parts");
         var partsB = Places(rowB, "parts");
-        Assert.Equal(3, partsA.Count);
-        Assert.Equal(3, partsB.Count);
+        Assert.Equal(4, partsA.Count);
+        Assert.Equal(4, partsB.Count);
         output.WriteLine($"part lefts, row A: {string.Join(", ", partsA.Select(p => p.Left))}; row B: {string.Join(", ", partsB.Select(p => p.Left))}");
 
-        for (var i = 0; i < 3; i++)
+        for (var i = 0; i < 4; i++)
             Assert.True(
                 Math.Abs(partsA[i].Left - partsB[i].Left) <= Tolerance,
                 $"part {i} starts at {partsA[i].Left} on the first row and {partsB[i].Left} on the second");
-        Assert.True(partsA[0].Left < partsA[1].Left && partsA[1].Left < partsA[2].Left, "the three parts do not sit side by side");
+        Assert.True(
+            partsA[0].Left < partsA[1].Left && partsA[1].Left < partsA[2].Left && partsA[2].Left < partsA[3].Left,
+            "the four parts do not sit side by side");
 
         foreach (var (name, row) in new[] { ("A", rowA), ("B", rowB) })
         {
             var tops = Places(row, "firstLines");
-            Assert.Equal(3, tops.Count);
+            Assert.Equal(4, tops.Count);
             output.WriteLine($"first line tops, row {name}: {string.Join(", ", tops.Select(p => p.Top))}");
             Assert.All(tops, p => Assert.True(Math.Abs(p.Top - tops[0].Top) <= Tolerance, $"the first lines of row {name} are not level: {string.Join(", ", tops.Select(t => t.Top))}"));
 
@@ -582,15 +667,17 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         Assert.All(pills, p => Assert.True(Math.Abs(p.Left - pills[0].Left) <= Tolerance, $"the column pills of row A start at {string.Join(", ", pills.Select(t => t.Left))}"));
     }
 
-    /// <summary>HA-2701 at the phone profile: head, capabilities, epics in flight, each below the one before and at the same left.</summary>
+    /// <summary>HA-2701 and HA-2846 at the phone profile: head, capabilities, epics in flight, on you, each below the one before and at the same left.</summary>
     private void AssertRowsStack(JsonElement rowA, JsonElement rowB)
     {
         foreach (var (name, row) in new[] { ("A", rowA), ("B", rowB) })
         {
             var parts = Places(row, "parts");
-            Assert.Equal(3, parts.Count);
+            Assert.Equal(4, parts.Count);
             output.WriteLine($"part places, row {name}: {string.Join("; ", parts.Select(p => $"({p.Left}, {p.Top})"))}");
-            Assert.True(parts[1].Top > parts[0].Top && parts[2].Top > parts[1].Top, $"the parts of row {name} do not stack head, capabilities, epics");
+            Assert.True(
+                parts[1].Top > parts[0].Top && parts[2].Top > parts[1].Top && parts[3].Top > parts[2].Top,
+                $"the parts of row {name} do not stack head, capabilities, epics, on you");
             Assert.All(parts, p => Assert.True(Math.Abs(p.Left - parts[0].Left) <= Tolerance, $"the parts of row {name} do not share a left"));
         }
     }
@@ -682,9 +769,11 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     /// project; its limit is two. Every epic is left in the column it was filed
     /// in, whose name is read back from the statuses. Three more in the first
     /// project: one with no capability, one moved into the implementation column
-    /// and one into a terminal column.
+    /// and one into a terminal column. The first ambition has a description, a budget
+    /// of 100 and a 41.00 session; the second a 12.50 session and no budget; the
+    /// terminal one a budget of 1 and a 2.00 session.
     /// </summary>
-    private static async Task<Seeded> SeedAsync(string baseUrl)
+    private static async Task<Seeded> SeedAsync(string baseUrl, IServiceProvider services)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
@@ -697,7 +786,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         const string titleA = "Partners order without a phone call";
         const string titleB = "Staff see every order at a glance";
 
-        var a = await PostAsync<IssueCreateRequest, IssueDto>(http, "/api/issues", new(projectA.Id, "ambition", titleA, null, null, null, null));
+        var a = await PostAsync<IssueCreateRequest, IssueDto>(http, "/api/issues", new(projectA.Id, "ambition", titleA, DescriptionA, null, null, null));
         var capsA = new List<long>();
         foreach (var (statement, howToTell) in new[]
         {
@@ -748,11 +837,30 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         var implementation = board[board.IndexOf(terminal) - 2];
 
         await PostAsync<IssueCreateRequest, IssueDto>(http, "/api/issues", new(projectA.Id, "ambition", TitleDraft, null, null, null, null));
+        string? doneKey = null;
         foreach (var (title, column) in new[] { (TitleRunning, implementation), (TitleDone, terminal) })
         {
             var ambition = await PostAsync<IssueCreateRequest, IssueDto>(http, "/api/issues", new(projectA.Id, "ambition", title, null, null, null, null));
             await PostAsync<CapabilityCreateRequest, CapabilityDto>(http, $"/api/issues/{ambition.Key}/capabilities", new("It works", "Look at it"));
             await PostAsync<IssueMoveRequest, IssueDto>(http, $"/api/issues/{ambition.Key}/move", new(column.Id, null, null));
+            if (title == TitleDone) doneKey = ambition.Key;
+        }
+
+        await SetBudgetAsync(http, a.Key, "100");
+        await SetBudgetAsync(http, doneKey!, "1");
+
+        // What each has cost is written straight to the work log, as the budget page's test writes it.
+        using (var scope = services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<HatchContext>();
+            foreach (var (key, cost) in new[] { (a.Key, 41.00m), (b.Key, 12.50m), (doneKey!, 2.00m) })
+            {
+                Assert.True(IssueKey.TryParse(key, out var projectKey, out var number));
+                var issueId = await db.Issues.WithKey(projectKey, number).Select(i => i.Id).SingleAsync();
+                db.WorkLog.Add(Session(issueId, new DateTimeOffset(2026, 3, 1, 9, 0, 0, TimeSpan.Zero), cost, implementation.Id));
+            }
+
+            await db.SaveChangesAsync();
         }
 
         return new Seeded(
@@ -760,6 +868,27 @@ public class AmbitionsPageTests(ITestOutputHelper output)
             epicTitle1, epicTitle2, epicTitle3, ColumnOf(epic1), ColumnOf(epic2), ColumnOf(epic3),
             implementation.Name, terminal.Name);
     }
+
+    private static async Task SetBudgetAsync(HttpClient http, string key, string amount)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/issues/{key}/budget")
+        {
+            Content = JsonContent.Create(new IssueBudgetRequest(amount), options: Web),
+        };
+        using var response = await http.SendAsync(request);
+        var text = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, $"PATCH /api/issues/{key}/budget answered {(int)response.StatusCode}: {text}");
+    }
+
+    /// <summary>One finished session. Written to the work log directly, as the budget page's test writes its own.</summary>
+    private static EfHatchWorkLogEntry Session(long issueId, DateTimeOffset start, decimal costUsd, int statusId) =>
+        new()
+        {
+            IssueId = issueId, SessionId = Guid.NewGuid().ToString("N"), StartedAt = start, EndedAt = start.AddMinutes(30),
+            DurationMs = (long)TimeSpan.FromMinutes(30).TotalMilliseconds, CreatedAt = start.AddMinutes(30),
+            IssueType = "ambition", PlaybookFromStatusId = statusId, PlaybookToStatusId = statusId, Outcome = ClaimOutcomes.Worked,
+            Title = "a session", Summary = "what it did", CostUsd = costUsd,
+        };
 
     private static async Task ServesAsync(HttpClient http, string epicKey, long capabilityId)
     {

@@ -1130,8 +1130,9 @@ export type AmbitionStage =
   | 'shelved';
 
 /** One ambition and where it stands: its stage and what it needs next, its
-    capabilities counted four ways, and the epics open beneath it. The four
-    counts add up to `capabilities`. */
+    capabilities counted four ways, the epics open beneath it, what it is for,
+    what waits on the reader and what it has cost. The four counts add up to
+    `capabilities`. */
 export interface AmbitionRow {
   key: string;
   projectKey: string;
@@ -1151,6 +1152,12 @@ export interface AmbitionRow {
   /** Of `holds`, those whose unbroken run of holds began within seven days. */
   newlyHolding: number;
   open: AmbitionOpenEpic[];
+  /** The first sentence of the description as plain text, at most 200 characters; empty with no description. */
+  summary: string;
+  /** Open hold-level questions on the ambition and beneath it that the reader may see. */
+  decisions: number;
+  /** The budget and what has been spent, as the ambition's own page tells it. */
+  budget: IssueBudget;
   /** Some child is in a project the reader's scope does not hold. */
   childBeyondScope: boolean;
 }
