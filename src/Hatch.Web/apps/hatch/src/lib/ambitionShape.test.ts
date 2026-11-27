@@ -3,11 +3,12 @@ import {
   addFiles,
   dreamsLine,
   shapeBlocker,
+  shapeProject,
   shapeRequest,
   withoutFile,
   type ShapeFile,
 } from './ambitionShape';
-import type { Dream } from '../types';
+import type { Dream, Project } from '../types';
 
 const dreams = [{ id: 3 } as Dream, { id: 1 } as Dream, { id: 2 } as Dream];
 const file = (id: string): ShapeFile => ({ id, name: `${id}.png`, size: 10 });
@@ -136,5 +137,35 @@ describe('addFiles', () => {
 describe('withoutFile', () => {
   it('drops the one row and keeps the order of the rest', () => {
     expect(withoutFile([file('a'), file('b'), file('c')], 'b').map((r) => r.id)).toEqual(['a', 'c']);
+  });
+});
+
+describe('shapeBlocker without dreams', () => {
+  const base = { projectId: 1, projectCount: 1, words: '', useOnScreen: false, dreams: [], files: [], uploading: false };
+
+  it('names no dream when nothing was given', () => {
+    expect(shapeBlocker({ ...base, withDreams: false })).toBe('Give some words or a file first.');
+  });
+
+  it('keeps the dreams line by default', () => {
+    expect(shapeBlocker(base)).toBe('Give some words, a dream or a file first.');
+  });
+});
+
+describe('shapeProject', () => {
+  const projects = [{ id: 1 }, { id: 2 }] as Project[];
+
+  it('keeps a pick that is one of the projects', () => {
+    expect(shapeProject(2, projects)).toBe(2);
+  });
+
+  it('takes the only project when none is picked', () => {
+    expect(shapeProject(null, [{ id: 7 }] as Project[])).toBe(7);
+  });
+
+  it('is null with several projects and no pick, or a pick that is gone', () => {
+    expect(shapeProject(null, projects)).toBeNull();
+    expect(shapeProject(9, projects)).toBeNull();
+    expect(shapeProject(null, [])).toBeNull();
   });
 });
