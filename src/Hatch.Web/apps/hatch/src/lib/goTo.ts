@@ -254,3 +254,35 @@ export function entryKeys(rows: { key: string }[], query: string): string[] {
   if (searchPath(query) !== null) keys.push(SEARCH_ROW);
   return keys;
 }
+
+/**
+ * The key a query is, when the whole of it is one: `HA-455` or `ha-455`, with
+ * the hyphen, around which spaces are ignored. Upper-cased. Null for anything
+ * else - `HA455`, `HA-`, `455`, `HA-455 x`. The project and the number are not
+ * checked against anything: the issue page says when a key names nothing.
+ *
+ * Not `splitKey`, which takes any text before the last hyphen. The ten-digit cap
+ * is the one the project numbers' listing uses.
+ */
+export function wholeKey(query: string): string | null {
+  const hit = /^([A-Za-z][A-Za-z0-9]*)-([1-9]\d{0,9})$/.exec(query.trim());
+  return hit ? `${hit[1]}-${hit[2]}`.toUpperCase() : null;
+}
+
+/**
+ * Where Enter goes when the person pasted a whole key and did not move the
+ * highlight: the card the board holds for it, else the key alone, which the
+ * console opens without asking the server first. Null when the highlight was
+ * moved, or the query is not one whole key: Enter then takes the highlighted row.
+ */
+export function pastedKeyTarget(
+  query: string,
+  moved: boolean,
+  cards: IssueCard[],
+): { card: IssueCard } | { key: string } | null {
+  if (moved) return null;
+  const key = wholeKey(query);
+  if (key === null) return null;
+  const card = cards.find((c) => c.key.toUpperCase() === key);
+  return card ? { card } : { key };
+}
