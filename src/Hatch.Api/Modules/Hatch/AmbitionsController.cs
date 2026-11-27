@@ -48,6 +48,14 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, ICalle
     /// stands over any open question there, or when it is held. A question on
     /// a story beneath the epic folds nothing: the walk only goes up.
     ///
+    /// <para>A row also says what the ambition is for, what waits on the reader and what it
+    /// has cost. <c>summary</c> is <see cref="AmbitionSummary.Of"/> of the description.
+    /// <c>decisions</c> counts the open hold-level questions on the ambition and on everything
+    /// beneath it that the reader may see: other levels, answered questions and ones on closed
+    /// issues are left out, and <paramref name="projectId"/> does not narrow it, as it does not
+    /// narrow the open epics. <c>budget</c> is <see cref="AmbitionBudget.Of"/>, read for every
+    /// ambition and not only a running one.</para>
+    ///
     /// <para>The stage is <see cref="AmbitionStage.Of"/>'s. Everything it needs
     /// is read once for the whole list - the columns, the playbooks, the queue's
     /// own gate and the budgets - so the cost does not grow with the number of
@@ -73,6 +81,7 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, ICalle
                 StatusName = i.Status!.Name,
                 i.WipLimit,
                 i.BudgetUsd,
+                i.Description,
             })
             .ToListAsync(ct);
         if (ambitions.Count == 0) return Array.Empty<AmbitionRowDto>();
@@ -136,14 +145,16 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, ICalle
         var playbooks = await db.Playbooks.AsNoTracking().ToListAsync(ct);
 
         // Only an ambition in the implementation column asks why its pass is not
-        // running or what it has spent, so only such a row costs the reads.
+        // running, so only such a row costs the gate. Every row tells what it has
+        // spent, but that is one read for all of them, not one each.
         var implementationId = Columns.Implementation(statuses)?.Id;
         var inPass = ambitions.Where(a => a.StatusId == implementationId).ToList();
 
         // The gate counts every child, as the queue does, whatever the reader's
         // scope holds: the reader's tree is read unfiltered, so it serves here.
         var family = inPass.Count == 0 ? null : await FamilyGate.ForAsync(db, actors, statuses, ct, priorities);
-        var spent = await AmbitionBudget.SpentAsync(db, inPass.Where(a => a.BudgetUsd is not null).Select(a => a.Id).ToList(), ct);
+        var spent = await AmbitionBudget.SpentAsync(db, ambitionIds, ct);
+        var decisions = DecisionsUnder(priorities, ambitionIds);
         var now = time.GetUtcNow();
 
         var rows = new List<AmbitionRowDto>(ambitions.Count);
@@ -166,10 +177,12 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, ICalle
                 else notStarted++;
             }
 
+            var budget = AmbitionBudget.Of(a.BudgetUsd, spent[a.Id]);
+
             var (stage, why) = AmbitionStage.Of(
                 statusById[a.StatusId], statuses, own.Count, held,
                 Dispatch.MatchShapingPress(playbooks, a.ProjectId)?.FromStatusId,
-                budgetSpent: spent.TryGetValue(a.Id, out var sum) && AmbitionBudget.IsSpent(a.BudgetUsd, sum.Spent),
+                budgetSpent: budget.Spent,
                 passFold: a.StatusId == implementationId ? family?.PassFold(a.Id, a.WipLimit, statuses, now)?.Sentence : null);
 
             rows.Add(new AmbitionRowDto(
@@ -196,11 +209,46 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, ICalle
                     servesOf.GetValueOrDefault(e.Id) ?? [],
                     waits[e.Id] is not null,
                     waits[e.Id])).ToList(),
+                AmbitionSummary.Of(a.Description),
+                decisions.GetValueOrDefault(a.Id),
+                budget,
                 priorities.Disclose(a.Id).ChildBeyondScope));
         }
 
         // A stable sort: the board order the rows arrived in holds inside a group.
         return rows.OrderBy(r => AmbitionStage.Group(r.Stage)).ToArray();
+    }
+
+    /// <summary>
+    /// How many hold-level questions wait under each of these ambitions, by its id. Each issue
+    /// the reader may see with an open hold question walks up its parents to the first listed
+    /// ambition and adds its count there. The walk does not stop at an ancestor the reader
+    /// cannot see, and the read's project filter never narrows it, so it can count a question
+    /// the tile and a narrowed ballot leave out. A cycle in the parents ends the walk.
+    /// </summary>
+    private static Dictionary<long, int> DecisionsUnder(PriorityTree priorities, List<long> ambitionIds)
+    {
+        var listed = ambitionIds.ToHashSet();
+        var counts = new Dictionary<long, int>();
+
+        foreach (var (issueId, count) in priorities.VisibleHoldQuestions())
+        {
+            var seen = new HashSet<long>();
+            long? at = issueId;
+
+            while (at is { } id && seen.Add(id))
+            {
+                if (listed.Contains(id))
+                {
+                    counts[id] = counts.GetValueOrDefault(id) + count;
+                    break;
+                }
+
+                at = priorities.TryGet(id, out var row) ? row.ParentId : null;
+            }
+        }
+
+        return counts;
     }
 
     /// <summary>
