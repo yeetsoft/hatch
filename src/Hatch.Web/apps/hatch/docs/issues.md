@@ -330,6 +330,16 @@ but cannot change it - `PUT /me/home` takes a person only. See [the board
 and its columns](the-board-and-its-columns) and
 [the API reference](api-reference).
 
+The heading has a primary press, **New ambition**, on both profiles. It opens a
+dialog of the same name, holding a project picker, a box for the words and
+**Add images or videos**; the project is already picked where the tab's scope
+names exactly one, or where the board has only one. **Shape** files the draft
+ambition and opens its page, as on the Dreams page, which is where the form
+comes from ([Shaping an ambition](dreams)); a refusal shows as the server's own
+sentence and the words stay. The dialog offers no dreams. The press files into
+the column where a session shapes the ambition, which the New issue dialog does
+not, and it is not drawn for a key: shaping is a person's press.
+
 Above the rows is a strip of what is waiting on the reader: one line for
 every question at the hold level anywhere on an ambition's tree, the
 ambition itself included. The strip is a card, like a row below it, with
@@ -352,7 +362,11 @@ its key, title and column, with the numbers of the capabilities it serves as
 badges, or a dash where it serves none. With no epic open the third part
 says so instead: "No epic is open under this ambition." Rows come in board
 order: by column, then by rank, then by id. With no ambition in the tab's scope, the
-page says "No ambition in scope." Each row is a card, and its three parts sit
+page says in two sentences what an ambition is - "An ambition is what you are
+driving at, broken into capabilities that are each checked against the trunk
+on every pass. A person starts one by saying what they want, and a session
+shapes it." - and offers the same press as the heading, in place of a bare
+"No ambition in scope." Each row is a card, and its three parts sit
 on three columns set once for the whole list, so the head, the capabilities
 and the epics start at the same place on every row, with their first lines
 level; in the epics, the column and the capability numbers also line up from
