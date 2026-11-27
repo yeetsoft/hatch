@@ -1,3 +1,4 @@
+using System.Globalization;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
@@ -17,7 +18,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/ambitions")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class AmbitionsController(HatchContext db, IActorDirectory actors, TimeProvider time) : ControllerBase
+public class AmbitionsController(HatchContext db, IActorDirectory actors, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
     private const string Ambition = "ambition";
 
@@ -203,6 +204,62 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, TimePr
     }
 
     /// <summary>
+    /// What changed under the reader's ambitions since an instant: capabilities that now
+    /// hold, epics carved from an ambition, decisions made without the reader and
+    /// hold-level questions still open. Newest first, at most <see cref="WhatChanged.MaxLines"/>,
+    /// with a count of any left out.
+    /// </summary>
+    /// <param name="since">
+    /// An ISO 8601 instant, read as UTC where it names no offset. Left out, a
+    /// person's read takes the last visit <c>PUT /api/me/visits/ambitions</c> stored, and a
+    /// key's, or a first visit's, takes the last seven days: the answer's <c>basis</c> says which.
+    /// </param>
+    /// <param name="projectId">Whose ambitions to read, as <see cref="GetAmbitions"/> takes it.</param>
+    [HttpGet("changes")]
+    public async Task<ActionResult<AmbitionChangesDto>> GetChanges(
+        [FromQuery] string? since, [FromQuery] List<int>? projectId, CancellationToken ct)
+    {
+        var projectIds = (projectId ?? []).Distinct().ToList();
+        var now = time.GetUtcNow();
+
+        DateTimeOffset from;
+        string basis;
+
+        if (!string.IsNullOrWhiteSpace(since))
+        {
+            // Not IssueMoment: that cuts to the second, and a visit is stored to the tick.
+            if (!DateTimeOffset.TryParse(since, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out from))
+                return BadRequest("since is not a time: send an ISO 8601 instant such as 2026-11-20T09:00:00Z");
+            basis = AmbitionChangeBasis.Given;
+        }
+        else if (await StoredVisitAsync(ct) is { } visited)
+        {
+            from = visited;
+            basis = AmbitionChangeBasis.Visit;
+        }
+        else
+        {
+            from = now.AddDays(-AmbitionChangeBasis.WeekDays);
+            basis = AmbitionChangeBasis.Week;
+        }
+
+        return await WhatChanged.ReadAsync(db, from, basis, projectIds, ct);
+    }
+
+    /// <summary>The caller's last visit to this page, or null for a key, a caller nobody signed in as, and a first visit.</summary>
+    private async Task<DateTimeOffset?> StoredVisitAsync(CancellationToken ct)
+    {
+        if (await caller.IsProgramAsync(ct)) return null;
+        if (await actors.PrincipalAsync(ct) is not { } principal) return null;
+
+        return await db.PersonVisits.AsNoTracking()
+            .Where(v => v.PersonId == principal.Id && v.Page == PersonVisitPage.Ambitions)
+            .Select(v => (DateTimeOffset?)v.VisitedAt)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>
     /// Of the capabilities given, all of which hold now, those whose unbroken
     /// run of holds began more than seven days ago. The run reaches back that
     /// far when a holds verdict that old has nothing but holds after it, so a
@@ -244,6 +301,6 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, TimePr
     }
 
     /// <summary>The optional project filter.</summary>
-    private static IQueryable<EfHatchIssue> InProject(IQueryable<EfHatchIssue> issues, List<int> projectIds) =>
+    internal static IQueryable<EfHatchIssue> InProject(IQueryable<EfHatchIssue> issues, List<int> projectIds) =>
         projectIds.Count > 0 ? issues.Where(i => projectIds.Contains(i.ProjectId)) : issues;
 }

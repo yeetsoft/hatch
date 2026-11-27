@@ -87,6 +87,7 @@ public class QueryFilterModelAuditTests
     [InlineData(typeof(EfHatchWipLimit))]
     [InlineData(typeof(EfHatchPersonScope))]
     [InlineData(typeof(EfHatchPersonHome))]
+    [InlineData(typeof(EfHatchPersonVisit))]
     [InlineData(typeof(EfHatchRunner))]
     [InlineData(typeof(EfHatchRunnerConfig))]
     [InlineData(typeof(EfHatchRunnerSession))]

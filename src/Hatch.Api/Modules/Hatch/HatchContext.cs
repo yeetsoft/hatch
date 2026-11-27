@@ -65,6 +65,7 @@ public class HatchContext : DbContext, IModuleContext
     public DbSet<EfHatchPersonScope> PersonScopes => Set<EfHatchPersonScope>();
     public DbSet<EfHatchPersonScopeProject> PersonScopeProjects => Set<EfHatchPersonScopeProject>();
     public DbSet<EfHatchPersonHome> PersonHomes => Set<EfHatchPersonHome>();
+    public DbSet<EfHatchPersonVisit> PersonVisits => Set<EfHatchPersonVisit>();
     public DbSet<EfHatchProjectLogo> ProjectLogos => Set<EfHatchProjectLogo>();
     public DbSet<EfHatchAttachment> Attachments => Set<EfHatchAttachment>();
     public DbSet<EfHatchStatus> Statuses => Set<EfHatchStatus>();
@@ -411,6 +412,8 @@ public class HatchContext : DbContext, IModuleContext
                 .HasForeignKey(d => d.DependsOnId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        modelBuilder.Entity<EfHatchPersonVisit>().HasKey(v => new { v.PersonId, v.Page });
 
         // An edge has no meaning without either row, so deleting either takes
         // it, in both directions. No inverse navigation on the dream or the
@@ -975,7 +978,7 @@ public class HatchContext : DbContext, IModuleContext
         // navigation: the rule should read the same whichever way EF composes
         // it.
         //
-        // Deliberately unfiltered: Statuses, WipLimits, PersonHomes,
+        // Deliberately unfiltered: Statuses, WipLimits, PersonHomes, PersonVisits,
         // the runner tables (RunnerFailures among them), ChatWorkspaces and
         // ChatRooms and ChatSubjects and ChatProblems and ChatLinks and ChatLinkSends (none names a project), PersonScopes and
         // PersonScopeProjects (the resolver reads them), and the core schema.

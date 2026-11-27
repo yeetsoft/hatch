@@ -788,7 +788,7 @@ public class AmbitionsControllerTests
         return new Harness
         {
             Db = db,
-            Ambitions = new AmbitionsController(db, new StubActorDirectory(), new FakeTimeProvider(Now)),
+            Ambitions = new AmbitionsController(db, new StubActorDirectory(), new MeScopeTests.StubCaller(null, null, null), new FakeTimeProvider(Now)),
             ProjectId = project.Id,
             Other = other.Id,
             Idea = idea.Id,
