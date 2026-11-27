@@ -153,7 +153,14 @@ export function AmbitionsBody({
     <div className="hatch-page">
       <PageHeader
         title="Ambitions"
-        description="What you are driving at, across every project, each checked against the trunk on every pass."
+        description={
+          <>
+            What you are driving at, across every project, each checked against the trunk on every pass.{' '}
+            <Link to="/docs/ambitions" className="hatch-ambition-docs-link">
+              How ambitions work
+            </Link>
+          </>
+        }
         actions={onNew && <NewAmbitionButton onClick={onNew} />}
       />
 

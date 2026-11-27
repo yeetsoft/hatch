@@ -6245,6 +6245,14 @@ input.hatch-inline-title-input {
   text-decoration: underline;
 }
 
+/* The link to the docs page in the heading's own line: in the page's link
+   colour, and kept whole so it never splits across two lines. */
+.hatch-ambition-docs-link {
+  display: inline-block;
+  color: var(--primary);
+  text-decoration: underline;
+}
+
 .hatch-ambition-strip-lines {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content minmax(0, 2fr) max-content;
@@ -6384,6 +6392,7 @@ input.hatch-inline-title-input {
   }
 
   .hatch-ambition-tile-link,
+  .hatch-ambition-docs-link,
   .hatch-ambition-decisions > a {
     display: inline-flex;
     align-items: center;

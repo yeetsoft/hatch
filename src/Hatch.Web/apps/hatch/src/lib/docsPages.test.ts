@@ -21,6 +21,29 @@ describe('the pages split out of hatch-at-home.md', () => {
   });
 });
 
+describe('the Ambitions page', () => {
+  const ambitions = docPage(DOC_PAGES, 'ambitions');
+  const headings = [
+    'Capabilities',
+    'Passes',
+    'A draft ambition',
+    'Changing an ambition',
+    'Budget',
+    'The Ambitions page',
+    'Principles',
+  ];
+
+  it('is a Concepts page titled Ambitions', () => {
+    expect(ambitions).toMatchObject({ title: 'Ambitions', section: 'Concepts' });
+  });
+
+  it.each(headings)('holds the section %s, which the Issues page no longer does', (heading) => {
+    const line = new RegExp('^## ' + heading + '$', 'm');
+    expect(ambitions!.body).toMatch(line);
+    expect(docPage(DOC_PAGES, 'issues')!.body).not.toMatch(line);
+  });
+});
+
 describe('the links retargeted when the document was split', () => {
   const cli = '/docs/one-increment-and-the-loop';
   const gettingStarted = renderDocs(docPage(DOC_PAGES, 'getting-started')!.body).html;
