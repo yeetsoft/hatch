@@ -84,10 +84,11 @@ const COLUMNS: { key: SessionSort; label: string }[] = [
  * an API key and the server refuses a browser outright. The absence is the
  * guarantee - do not add one for symmetry.
  *
- * Under a scoped tab the page's reads and the picker's candidates are all
- * narrowed to the scope's projects - nothing is fetched until the project
- * list is known, so the first request is already the right one. The body is
- * a component of its own so that wait is not inside `load`.
+ * Under a scoped tab the page's reads, the picker's candidates and the
+ * picker's own lookup are all narrowed to the scope's projects - nothing is
+ * fetched until the project list is known, so the first request is already
+ * the right one. The body is a component of its own so that wait is not
+ * inside `load`.
  */
 export function LeaderboardPage() {
   const { ids, inScope, loaded } = useScope();
@@ -231,7 +232,13 @@ function LeaderboardBody({
               value={query.issue}
               candidates={inScopeCards(board?.issues ?? [], inScope)}
               placeholder="Everything"
-              emptyMessage="Nothing is filed yet."
+              emptyMessage="Type a key, a number or title words to find an issue."
+              /* Narrowed to the scope's own projects, same as the candidates
+                 above - a lookup with no project ids would offer the whole
+                 house to a tab that is supposed to be one slice of it. Every
+                 row the server returns is already in scope, so `accept`
+                 takes them all. */
+              lookup={{ projectIds: ids, accept: () => true }}
               /* The handler writes the URL and nothing else. There is nothing
                  to await here and nothing that can fail - the re-read is the
                  effect of the URL changing. */
