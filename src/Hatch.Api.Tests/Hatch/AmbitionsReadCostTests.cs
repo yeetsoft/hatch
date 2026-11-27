@@ -53,7 +53,7 @@ public class AmbitionsReadCostTests
         {
             var result = await new AmbitionsController(
                     db, new StubActorDirectory(), new MeScopeTests.StubCaller(null, null, null), new FakeTimeProvider(Now))
-                .GetAmbitions(null, default);
+                .GetAmbitions(null, null, default);
 
             var rows = result.Value ?? throw new InvalidOperationException("the read was refused");
             Assert.Equal(ambitions, rows.Length);
@@ -64,6 +64,39 @@ public class AmbitionsReadCostTests
         });
 
         return measured.Statements;
+    }
+
+    [SkippableFact]
+    public async Task AReadNarrowedToOneKey_CostsNoMoreThanTheFullRead()
+    {
+        Skip.IfNot(
+            HatchDatabase.Available,
+            "HATCH_TEST_DATABASE_URL is unset - the counts come from a real Postgres. Run `make test-api-db`, " +
+            "or point the variable at a scratch database that may be dropped.");
+
+        var connectionString = await HatchDatabase.PrepareAsync();
+        await SeedAsync(connectionString, 20);
+
+        var full = await ReadCounter.MeasureAsync(connectionString, async db =>
+        {
+            var result = await new AmbitionsController(
+                    db, new StubActorDirectory(), new MeScopeTests.StubCaller(null, null, null), new FakeTimeProvider(Now))
+                .GetAmbitions(null, null, default);
+            Assert.Equal(20, (result.Value ?? throw new InvalidOperationException("the read was refused")).Length);
+        });
+
+        var byKey = await ReadCounter.MeasureAsync(connectionString, async db =>
+        {
+            var result = await new AmbitionsController(
+                    db, new StubActorDirectory(), new MeScopeTests.StubCaller(null, null, null), new FakeTimeProvider(Now))
+                .GetAmbitions(null, "AER-1", default);
+            Assert.Single(result.Value ?? throw new InvalidOperationException("the read was refused"));
+        });
+
+        Assert.True(
+            byKey.Statements.Count <= full.Statements.Count,
+            $"the key-narrowed read sent {byKey.Statements.Count} statements and the full read sent {full.Statements.Count}:" +
+            $"{Environment.NewLine}{Listed(byKey.Statements)}{Environment.NewLine}{Listed(full.Statements)}");
     }
 
     /// <summary>

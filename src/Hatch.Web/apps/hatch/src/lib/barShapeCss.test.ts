@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(new URL('../App.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-const ambitionsPage = readFileSync(new URL('../pages/AmbitionsPage.tsx', import.meta.url), 'utf8');
+const ambitionHeader = readFileSync(new URL('../components/AmbitionHeader.tsx', import.meta.url), 'utf8');
 
 /** The declarations of every rule whose selector list holds `selector` as one
     of its entries, merged, later winning. `.a .b` is its own entry, taken as
@@ -90,7 +90,7 @@ describe('the capabilities bar segments', () => {
   });
 
   it('keep their order', () => {
-    const order = [...ambitionsPage.matchAll(/cls: '([a-z-]+)'/g)].map((m) => m[1]);
+    const order = [...ambitionHeader.matchAll(/cls: '([a-z-]+)'/g)].map((m) => m[1]);
 
     expect(order).toEqual(['holds', 'in-flight', 'waiting', 'not-started']);
   });
