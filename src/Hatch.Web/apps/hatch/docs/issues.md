@@ -507,6 +507,8 @@ segment each for holds, in flight, waiting and not started, and the legend
 beneath it reads "1 hold, 1 in flight, 1 waiting on a person, 1 not
 started."
 
+### Since you last looked
+
 Below the rows, **Since you last looked** says what changed under the
 ambitions in the tab's scope since your last visit, and how long ago that
 was. Each line is its kind, then its words, newest first, and the whole line
