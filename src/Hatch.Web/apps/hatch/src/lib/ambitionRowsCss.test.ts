@@ -1,4 +1,4 @@
-/* The Ambitions page's rows line up: three columns set once on the list, a
+/* The Ambitions page's rows line up: four columns set once on the list, a
    first line that sits level across a row, and the epics' columns shared by
    every line. Read as text, the way barShapeCss.test.ts reads App.css - there
    is no DOM in this runner to lay them out in; the e2e test measures the
@@ -57,12 +57,12 @@ describe('the Ambitions list', () => {
     expect(groups['margin-top']).toBe('var(--sp-4)');
   });
 
-  it('sets the three columns once, on the list, and every row reads them', () => {
+  it('sets the four columns once, on the list, and every row reads them', () => {
     const declared = [...withoutMedia.matchAll(/--ambition-columns:\s*([^;]+);/g)];
 
     expect(declared).toHaveLength(1);
     expect(declarationsOf('.hatch-ambition-list')['--ambition-columns']).toBe(
-      'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr)',
+      'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr)',
     );
     expect(declarationsOf(ROW).display).toBe('grid');
     expect(declarationsOf(ROW)['grid-template-columns']).toBe('var(--ambition-columns)');
@@ -100,7 +100,7 @@ describe('a row as a card', () => {
 });
 
 describe('the first line of each part', () => {
-  it('is one size, weight, line height and margin for the title and both headings', () => {
+  it('is one size, weight, line height and margin for the title and the headings', () => {
     const title = declarationsOf('.hatch-ambition-title');
     const heading = declarationsOf('.hatch-ambition-heading');
 
@@ -133,6 +133,32 @@ describe("a row's title", () => {
 
     expect(hover).toEqual({ color: 'var(--primary)', 'text-decoration': 'underline' });
     expect(hover).toEqual(declarationsOf('.hatch-plan-key:hover'));
+  });
+});
+
+describe('what a row says about the ambition', () => {
+  it('draws the summary in label size and ink, where the stage sentence is muted', () => {
+    const summary = declarationsOf('.hatch-ambition-summary');
+
+    expect(summary['font-size']).toBe('var(--t-label)');
+    expect(summary.color).toBe('var(--ink)');
+    expect(declarationsOf('.hatch-ambition-why').color).toBe('var(--muted)');
+  });
+
+  it('draws the decision count bold, its link in the accent and underlined', () => {
+    expect(declarationsOf('.hatch-ambition-decisions')['font-weight']).toBe('700');
+    expect(declarationsOf('.hatch-ambition-decisions > a')).toEqual({
+      color: 'var(--primary)',
+      'text-decoration': 'underline',
+    });
+  });
+
+  it('draws the none line and the budget line in label size, muted, and a spent budget in bold ink', () => {
+    for (const selector of ['.hatch-ambition-none', '.hatch-ambition-budget']) {
+      expect(declarationsOf(selector)['font-size']).toBe('var(--t-label)');
+      expect(declarationsOf(selector).color).toBe('var(--muted)');
+    }
+    expect(declarationsOf('.hatch-ambition-budget-spent')).toEqual({ 'font-weight': '700', color: 'var(--ink)' });
   });
 });
 
@@ -181,11 +207,18 @@ describe('the epics in flight', () => {
 });
 
 describe('on a phone', () => {
-  it('stacks head, capabilities and epics in one column with one gap between', () => {
+  it('stacks the four parts in one column with one gap between', () => {
     const row = declarationsOf(ROW, true);
 
     expect(row['grid-template-columns']).toBe('1fr');
     expect(row['row-gap']).toMatch(/^var\(--sp-[\w-]+\)$/);
+  });
+
+  it('gives the ballot link a finger-sized target', () => {
+    const link = declarationsOf('.hatch-ambition-decisions > a', true);
+
+    expect(link.display).toBe('inline-flex');
+    expect(link['min-height']).toBe('44px');
   });
 
   it('puts the epic lines back to wrapping lines', () => {
