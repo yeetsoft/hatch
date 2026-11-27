@@ -1117,14 +1117,30 @@ export interface AmbitionOpenEpic {
   why: string | null;
 }
 
-/** One ambition and where it stands: its capabilities counted four ways, and
-    the epics open beneath it. The four counts add up to `capabilities`. */
+/** What stage an ambition is at, worked out by the server on each read. */
+export type AmbitionStage =
+  | 'budget spent'
+  | 'running'
+  | 'stopped'
+  | 'complete'
+  | 'ready'
+  | 'shaping'
+  | 'draft'
+  | 'done'
+  | 'shelved';
+
+/** One ambition and where it stands: its stage and what it needs next, its
+    capabilities counted four ways, and the epics open beneath it. The four
+    counts add up to `capabilities`. */
 export interface AmbitionRow {
   key: string;
   projectKey: string;
   title: string;
   statusId: number;
   statusName: string;
+  stage: AmbitionStage;
+  /** One sentence saying what the ambition needs or waits for. */
+  stageWhy: string;
   /** How many epics run at once, read as one where the ambition sets none. */
   limit: number;
   capabilities: number;

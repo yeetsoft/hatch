@@ -32,6 +32,8 @@ const row = (key: string, over: Partial<AmbitionRow> = {}): AmbitionRow => ({
   title: `ambition ${key}`,
   statusId: 1,
   statusName: 'To Do',
+  stage: 'ready',
+  stageWhy: 'Nothing runs until a person starts it.',
   limit: 2,
   capabilities: 10,
   holds: 2,
@@ -84,7 +86,65 @@ describe('AmbitionList', () => {
     expect(html).toContain('href="/issues/OPS-2"');
     expect(html).toContain('<span class="hatch-plan-project">AER</span>');
     expect(html).toContain('<span class="hatch-plan-project">OPS</span>');
-    expect(html).toContain('To Do');
+  });
+
+  it("draws the stage as a pill where the column's was, and the sentence under the title", () => {
+    const html = render(row('AER-1', { stage: 'budget spent', stageWhy: 'Its budget is spent.' }));
+
+    expect(html).toContain(
+      '<span class="hatch-plan-project">AER</span><span class="hatch-stage-pill hatch-stage-budget-spent">Budget spent</span></span>' +
+        '<p class="hatch-ambition-why">Its budget is spent.</p>',
+    );
+    expect(html.indexOf('ambition AER-1')).toBeLessThan(html.indexOf('Its budget is spent.'));
+    // The row says its stage, not its column.
+    expect(html).not.toContain('To Do');
+    expect(html).not.toContain('hatch-status-pill');
+  });
+
+  it('heads each stage with its word and count, in the order the rows come', () => {
+    const html = render(
+      row('AER-1', { stage: 'budget spent' }),
+      row('AER-2', { stage: 'running' }),
+      row('AER-3', { stage: 'running' }),
+      row('AER-4', { stage: 'draft' }),
+    );
+
+    const headings = [...html.matchAll(/<h2 class="hatch-ambition-group">(.*?)<\/h2>/g)].map((m) =>
+      m[1].replace(/<!-- -->/g, ''),
+    );
+    expect(headings).toEqual(['Budget spent, 1', 'Running, 2', 'Draft, 1']);
+    const places = ['AER-1', 'AER-2', 'AER-3', 'AER-4'].map((key) => html.indexOf(`href="/issues/${key}"`));
+    expect(places).toEqual([...places].sort((a, b) => a - b));
+    // The second running row sits under the Running heading, not under one of its own.
+    expect(places[2]).toBeLessThan(html.indexOf('>Draft'));
+  });
+
+  it('folds done and shelved ambitions under one closed line at the foot, counted', () => {
+    const html = render(
+      row('AER-1', { stage: 'running' }),
+      row('AER-2', { stage: 'done' }),
+      row('AER-3', { stage: 'shelved' }),
+    );
+
+    expect(html).toContain('<details class="hatch-ambition-finished"><summary>2 finished</summary>');
+    expect(html).not.toContain('open=""');
+    const fold = html.indexOf('<details');
+    expect(html.indexOf('href="/issues/AER-1"')).toBeLessThan(fold);
+    expect(html.indexOf('href="/issues/AER-2"')).toBeGreaterThan(fold);
+    expect(html.indexOf('href="/issues/AER-3"')).toBeGreaterThan(html.indexOf('href="/issues/AER-2"'));
+    // The finished ones are under no group heading.
+    expect(html.match(/hatch-ambition-group"/g)).toHaveLength(1);
+  });
+
+  it('draws no fold when nothing is finished, and only the fold when everything is', () => {
+    expect(render(row('AER-1'))).not.toContain('<details');
+
+    const html = render(row('AER-2', { stage: 'done' }));
+
+    expect(html).toContain('<summary>1 finished</summary>');
+    expect(html).not.toContain('hatch-ambition-group"');
+    expect(html).not.toContain('hatch-empty__action');
+    expect(html).not.toContain('A person starts one by saying what they want');
   });
 
   it('draws one segment per non-zero count, grown in proportion, and a legend naming each', () => {
@@ -152,8 +212,8 @@ describe('AmbitionList', () => {
     expect(html).not.toContain('No epic is open');
   });
 
-  it('draws a column the list lacks as muted text', () => {
-    const html = render(row('AER-1', { statusId: 99, statusName: 'Gone' }));
+  it("draws an epic's column the list lacks as muted text", () => {
+    const html = render(row('AER-1', { open: [epic('AER-7', { statusId: 99, statusName: 'Gone' })] }));
 
     expect(html).toContain('<span class="text-muted">Gone</span>');
   });

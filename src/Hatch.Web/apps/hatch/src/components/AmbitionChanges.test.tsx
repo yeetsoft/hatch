@@ -174,6 +174,8 @@ describe('the section on the page', () => {
     title: 'Partners order alone',
     statusId: 1,
     statusName: 'To Do',
+    stage: 'ready',
+    stageWhy: 'Nothing runs until a person starts it.',
     limit: 1,
     capabilities: 0,
     holds: 0,

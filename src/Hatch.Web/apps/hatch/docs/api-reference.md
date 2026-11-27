@@ -747,11 +747,11 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | GET | `/go-to` | The first issues a typed number, key, whole key or title words name, quickly at any size of board |
 | GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request; a tree may cross projects |
 | GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
-| GET | `/ambitions` | Every ambition with its capabilities counted four ways and the epics open under it; takes a repeatable `projectId` |
+| GET | `/ambitions` | Every ambition with its stage, its capabilities counted four ways and the epics open under it, grouped by stage; takes a repeatable `projectId` |
 | GET | `/ambitions/changes` | What changed under the caller's ambitions since an instant: capabilities that now hold, epics carved, decisions made without a person, hold questions still open; takes `since` and a repeatable `projectId` |
 | GET | `/assignees` | Everybody an issue could belong to, plus who the caller is |
 
-All six a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
+All seven a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
 `createdFrom`/`createdTo`, `closedFrom`/`closedTo`, `limit` (1-200, default
 50) and `offset`; with `q`, best match first and closed-ahead-of-open among
 equals, without it newest first (closed, else created). Each hit's `matched`
@@ -792,8 +792,13 @@ read: an issue the caller cannot see is never a row, out of scope or not. A
 
 `/ambitions` takes an optional, repeatable `projectId`, the same filter
 `/plan` takes, and answers one `AmbitionRowDto` per ambition the caller may
-see, in board order: column sort order, then rank, then id. Its fields are
-`Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Limit` (the
+see, grouped by stage - `budget spent`, `running`, `stopped`, `complete`,
+`ready`, `shaping`, `draft`, then `done` and `shelved` together - and inside a
+group in board order: column sort order, then rank, then id. Its fields are
+`Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Stage` (one of those
+nine words; [the Ambitions page](issues#the-ambitions-page) says when each is
+true), `StageWhy` (one sentence saying what the ambition needs or waits for),
+`Limit` (the
 ambition's `wipLimit`, read as one where it is unset), `Capabilities`,
 `Holds`, `InFlight`, `WaitsOnPerson` and `NotStarted` (the four counts,
 adding up to `Capabilities`), `NewlyHolding` (of `Holds`, those whose unbroken run of holds began within the last seven days), `Open` (its open epics, in rank order), and
@@ -802,8 +807,8 @@ caller's scope does not hold). `Open` carries one `AmbitionOpenEpicDto` per
 open epic: `Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Serves`
 (the positions, ascending, of the capabilities of its own ambition that it
 serves), `WaitsOnPerson`, and `Why` - one sentence saying so, naming no key,
-null unless `WaitsOnPerson` is true. Every number on the page is derived on
-read; nothing behind it is stored.
+null unless `WaitsOnPerson` is true. The stage and every number are derived on
+read; nothing behind them is stored.
 
 `/ambitions/changes` answers what changed under those ambitions since an
 instant, as an `AmbitionChangesDto(Since, Basis, Omitted, Lines)`. `since` is an
