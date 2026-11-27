@@ -109,6 +109,20 @@ public static class Questions
         return new QuestionStanding(stand, question.IssueId, latest?.Author, latest?.AuthorKind);
     }
 
+    /// <summary>
+    /// What the work went ahead on for a look-back: the first line of the first answer a key
+    /// gave, or else the label of the option recommended. Null where neither is there.
+    /// <see cref="Ballot"/> and the Ambitions page's changes read both say it from here, so
+    /// they cannot word one decision two ways.
+    /// </summary>
+    public static string? WentAheadOn(QuestionDto question)
+    {
+        var programAnswer = question.Answers.FirstOrDefault(a => a.AuthorKind == ActorKind.Key);
+        return programAnswer is not null
+            ? FirstLine(programAnswer.Body)
+            : question.Options?.FirstOrDefault(o => o.Recommended)?.Label;
+    }
+
     /// <summary>The first non-blank line of a comment body, trimmed. Empty where the body is all blank.</summary>
     public static string FirstLine(string body) =>
         body.Split('\n').Select(l => l.TrimEnd('\r').Trim()).FirstOrDefault(l => l.Length > 0) ?? "";

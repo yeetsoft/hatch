@@ -748,6 +748,7 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request; a tree may cross projects |
 | GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
 | GET | `/ambitions` | Every ambition with its capabilities counted four ways and the epics open under it; takes a repeatable `projectId` |
+| GET | `/ambitions/changes` | What changed under the caller's ambitions since an instant: capabilities that now hold, epics carved, decisions made without a person, hold questions still open; takes `since` and a repeatable `projectId` |
 | GET | `/assignees` | Everybody an issue could belong to, plus who the caller is |
 
 All six a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
@@ -804,6 +805,34 @@ serves), `WaitsOnPerson`, and `Why` - one sentence saying so, naming no key,
 null unless `WaitsOnPerson` is true. Every number on the page is derived on
 read; nothing behind it is stored.
 
+`/ambitions/changes` answers what changed under those ambitions since an
+instant, as an `AmbitionChangesDto(Since, Basis, Omitted, Lines)`. `since` is an
+ISO 8601 instant, read as UTC where it names no offset and kept to the tick;
+send `Z`, or encode a `+` offset as `%2B`. One that is not a time is a `400` with
+a sentence. `projectId` is the same repeatable filter, and narrows by the
+ambition's project, in all four kinds. `Basis` says where `Since` came from:
+`given` when `since` was sent; `visit` when it was not and the caller is a
+person with a stored last visit (see `PUT /me/visits/ambitions`); `week` when
+there was nothing to go on - a first visit, or a key, which never has a visit -
+and `Since` is seven days before now. `Lines` are `AmbitionChangeLineDto(Kind,
+At, AmbitionKey, AmbitionTitle, IssueKey, IssueTitle, Statement, LookedAt,
+Serves, WentAheadOn, Question, Count)`, newest first by `At`, then kind
+(`holds`, `carved`, `decided`, `asked`), then `IssueKey`, then `Statement`.
+At most thirty come back, and `Omitted` counts the rest. `IssueKey` is the
+issue the line is about, the ambition itself for `holds`. A field a kind has
+no use for is null:
+
+| Kind | A line when | Fields it fills |
+|---|---|---|
+| `holds` | A capability's newest verdict inside the window holds, and the newest one before the window did not (or there was none). One that held and stopped holding inside the window draws nothing, and neither does one that held before and held again: the line says what is newly true. `At` is that verdict's. | `Statement` (the capability's), `LookedAt` (the verdict's) |
+| `carved` | An epic was filed inside the window and its parent is one of these ambitions now. An epic filed elsewhere and moved under an ambition later is not a line. | `Serves`: the positions, ascending, of the capabilities of that ambition it serves |
+| `decided` | A look-back question beneath an ambition that a key answered inside the window, or an unanswered `merge` question whose issue closed inside it. `At` is the key's latest answer, or the close. A person's later answer drops the line, as it drops it from `/ballot`. | `WentAheadOn`, worded as `/ballot` words it |
+| `asked` | A hold-level question asked inside the window, still open, beneath an ambition or on one. Several on one issue fold into one line. `At` is the newest's. | `Question` (the first line of the newest), `Count` |
+
+Nothing is stored for the lines: each is read from events and comments already
+kept, starting from the instant, so the read costs the same however long the
+board has run.
+
 **Refusals.** `/search` 400s an invalid `type`, a `limit` outside 1-200, a
 negative `offset`, or an unparseable date bound. `/plan/{key}` 404s an
 unknown key; `/plan` with a `projectId` naming no project answers an empty
@@ -811,6 +840,7 @@ plan rather than a 404, since an empty or just-deleted project is a legal
 thing to look at - true of each id when several are given. `/ambitions`
 answers the same way: a `projectId` naming no project contributes nothing to
 the list rather than 404ing, true of each id when several are given.
+`/ambitions/changes` 400s a `since` that is not a time.
 
 ## Attachments, images and import
 
@@ -1704,6 +1734,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | POST | `/backup/run` | **person** | Runs one backup attempt, capped at two minutes, and answers the same shape `GET /backup` does |
 | GET | `/me` | key | Who, or what, is calling - a browser or a key or a runner - for the nav strip |
 | PUT | `/me/home` | **person** | Sets the caller's own home screen, `board` or `ambitions`, and answers the fresh `/me` |
+| PUT | `/me/visits/ambitions` | **person** | Records that the caller opened the Ambitions page just now, no body, and answers `PersonVisitDto(Page, VisitedAt)`; a second write moves the same row |
 | GET | `/me/chat` | **person** | The caller's own Slack links, `{ linksOn, workspaces: [{ id, name, link }] }`. `linksOn` is whether `HATCH_PUBLIC_URL` is set. `link` is `null`, or `{ id, state, memberName, expiresAt, runnerFailures, lastRefusal, lastRefusalAt }` with `state` `waiting` or `linked`, and `expiresAt` null once linked. `runnerFailures` is whether a failing runner is told to the caller through the link; `lastRefusal` and `lastRefusalAt` are what Slack last said when it refused a direct message to them, and when, null until one is refused and again after the next is sent. A workspace is listed when the caller sees every project, or a project they can see is bound to it, or they hold a link there |
 | GET | `/me/chat/workspaces/{id}/suggestion` | **person** | `{ member }`: the Slack member whose email is one the caller has signed in with, newest sign-in first, stopping at the first match; `member` is `{ id, name, displayName }` or `null`. The local person has no sign-in email, so is answered `null` without a call to Slack. `404` for a workspace the caller may not see, `409` if the token cannot be read, `502` with Slack's sentence for a refusal |
 | GET | `/me/chat/workspaces/{id}/members` | **person** | The members of the workspace a message could go to, `[{ id, name, displayName }]`, by name. Deactivated members, bots and Slackbot are left out, and no email is given. Same `404`, `409` and `502` as the suggestion |
@@ -2068,6 +2099,15 @@ predates it - reads `board`. A person sets it with `PUT /me/home`, a body of
 body `GET /me` would now give. Any other word is a `400` naming the two, and a
 key, a keyless runner, or nobody signed in is a `403` with a sentence.
 
+`PUT /me/visits/ambitions` keeps when the caller last opened the Ambitions page,
+on the server and for the person, so a phone and a desk agree. It takes no
+body, writes one row per person, and answers `PersonVisitDto(Page, VisitedAt)`
+with `page: ambitions` and the instant stored. `GET /ambitions/changes` with no
+`since` reads from it. Like `PUT /me/home` it is a person's own: a key, a
+keyless runner, or nobody signed in is a `403` with a sentence, and nothing is
+written. A key that wants the same lines sends `since`; it reaches both
+through `hatch api`.
+
 **Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
 ever used - it edits, it never creates. With the wall up, it also 403s a
 caller who is neither the runner's own owner nor an admin, naming the owner
@@ -2384,7 +2424,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **54** person-only paths on this page,
+on this page with both) - there are **55** person-only paths on this page,
 across both halves together:
 
 ```
@@ -2433,6 +2473,7 @@ DELETE /runners/{name}/order
 GET    /settings
 PUT    /settings
 PUT    /me/home
+PUT    /me/visits/ambitions
 GET    /me/chat
 GET    /me/chat/workspaces/{id}/suggestion
 GET    /me/chat/workspaces/{id}/members

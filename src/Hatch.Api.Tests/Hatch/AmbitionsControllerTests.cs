@@ -488,7 +488,7 @@ public class AmbitionsControllerTests
         return new Harness
         {
             Db = db,
-            Ambitions = new AmbitionsController(db, new StubActorDirectory()),
+            Ambitions = new AmbitionsController(db, new StubActorDirectory(), new MeScopeTests.StubCaller(null, null, null), TimeProvider.System),
             ProjectId = project.Id,
             Other = other.Id,
             Todo = todo.Id,

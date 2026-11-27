@@ -1,5 +1,6 @@
 using System.Globalization;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,9 +29,10 @@ internal static class ReadCostSeed
     /// <param name="OldLevels">Pre-approval changes before the window, for every issue.</param>
     /// <param name="OldRecords">Pull request record changes before the window, for every issue.</param>
     /// <param name="OldRunnerStates">State rows before the window, for each of the seeded runners.</param>
+    /// <param name="OldVerdicts">Verdicts, and the <c>capability_judged</c> events beside them, before the window, for each capability of the ambition <see cref="AddAmbitionAsync"/> adds.</param>
     public sealed record Size(
         string Name, int PairsPerIssue, int OldSessions, int OldComments,
-        int OldLevels = 1, int OldRecords = 1, int OldRunnerStates = 2);
+        int OldLevels = 1, int OldRecords = 1, int OldRunnerStates = 2, int OldVerdicts = 3);
 
     /// <summary>
     /// 440 moves, 200 sessions and 100 comments from before the window: each
@@ -44,7 +46,7 @@ internal static class ReadCostSeed
     /// the moves, and six times the rest.
     /// </summary>
     public static readonly Size Large = new("large", PairsPerIssue: 5, OldSessions: 1200, OldComments: 600,
-        OldLevels: 5, OldRecords: 5, OldRunnerStates: 500);
+        OldLevels: 5, OldRecords: 5, OldRunnerStates: 500, OldVerdicts: 15);
 
     // ---- What is the same at both sizes ----
 
@@ -395,6 +397,102 @@ internal static class ReadCostSeed
         await ReadCounter.FlushAsync(db.Database.GetDbConnection());
 
         return (connectionString, board);
+    }
+
+    /// <summary>Capabilities on the ambition <see cref="AddAmbitionAsync" /> adds.</summary>
+    public const int AmbitionCapabilities = 3;
+
+    /// <summary>
+    /// One ambition under the first project, for the read of what changed under it. Passed to
+    /// <see cref="SeedAsync"/> as <c>extend</c>, so the reads that do not know of ambitions keep the
+    /// board they were pinned on.
+    ///
+    /// <para>It has three capabilities and two epics, both filed inside the window, and inside the
+    /// window: one capability that comes to hold, one that holds and stops, an open hold question on
+    /// one epic and a merge question on the other that a key answered. Before the window each
+    /// capability has <see cref="Size.OldVerdicts"/> verdicts and as many events, none of them
+    /// holding, so the read has history to ignore and the same four lines to draw at both sizes.</para>
+    /// </summary>
+    public static async Task AddAmbitionAsync(HatchContext db, Board board, IReadOnlyList<EfHatchIssue> issues, Size size, DateTimeOffset now)
+    {
+        var windowStart = now.AddDays(-WindowDays);
+        var number = issues.Where(i => i.ProjectId == board.ProjectA).Max(i => i.Number);
+
+        EfHatchIssue Issue(string type, string title, int status, long? parent, DateTimeOffset at) => new()
+        {
+            ProjectId = board.ProjectA, Number = ++number, Type = type, Title = title, StatusId = status, ParentId = parent,
+            Rank = 1024L * (number + 1), CreatedBy = Actor, CreatedAt = at, UpdatedAt = at,
+        };
+
+        var ambition = Issue("ambition", "the ambition", board.Todo, null, now.AddDays(-110));
+        db.Issues.Add(ambition);
+        await db.SaveChangesAsync();
+
+        var firstEpic = Issue("epic", "the first epic", board.Doing, ambition.Id, windowStart.AddDays(3));
+        var secondEpic = Issue("epic", "the second epic", board.Todo, ambition.Id, windowStart.AddDays(4));
+        db.Issues.AddRange(firstEpic, secondEpic);
+        await db.SaveChangesAsync();
+
+        var capabilities = Enumerable.Range(1, AmbitionCapabilities)
+            .Select(p => new EfHatchCapability
+            {
+                IssueId = ambition.Id, Position = p, Statement = $"capability {p}", HowToTell = "look",
+                CreatedBy = Actor, CreatedAt = now.AddDays(-110), UpdatedAt = now.AddDays(-110),
+            })
+            .ToList();
+        db.Capabilities.AddRange(capabilities);
+        await db.SaveChangesAsync();
+
+        db.CapabilityLinks.AddRange(
+            new EfHatchCapabilityLink { CapabilityId = capabilities[0].Id, IssueId = firstEpic.Id, Actor = Actor, At = windowStart.AddDays(3) },
+            new EfHatchCapabilityLink { CapabilityId = capabilities[1].Id, IssueId = firstEpic.Id, Actor = Actor, At = windowStart.AddDays(3) },
+            new EfHatchCapabilityLink { CapabilityId = capabilities[2].Id, IssueId = secondEpic.Id, Actor = Actor, At = windowStart.AddDays(4) });
+
+        // A verdict and the event the route writes beside it.
+        void Judge(EfHatchCapability capability, string verdict, DateTimeOffset at)
+        {
+            db.CapabilityVerdicts.Add(new EfHatchCapabilityVerdict
+            {
+                CapabilityId = capability.Id, Verdict = verdict, LookedAt = "the page", Sha = "abc1234", Author = Actor, CreatedAt = at,
+            });
+            db.IssueEvents.Add(new EfHatchIssueEvent
+            {
+                IssueId = ambition.Id, Actor = Actor, Kind = EfHatchIssueEvent.CapabilityJudged, At = at,
+                Payload = string.Create(CultureInfo.InvariantCulture,
+                    $"{{\"id\":{capability.Id},\"position\":{capability.Position},\"verdict\":\"{verdict}\",\"sha\":\"abc1234\",\"author\":\"{Actor}\"}}"),
+            });
+        }
+
+        // None of the old ones holds, so a hold inside the window is news.
+        foreach (var capability in capabilities)
+            for (var n = 0; n < size.OldVerdicts; n++)
+                Judge(capability, n % 2 == 0 ? EfHatchCapabilityVerdict.DoesNotHold : EfHatchCapabilityVerdict.CannotTell,
+                    now.AddDays(-100) + TimeSpan.FromHours(n * 3) + TimeSpan.FromMinutes(capability.Position));
+
+        Judge(capabilities[0], EfHatchCapabilityVerdict.Holds, windowStart.AddDays(5));
+        Judge(capabilities[1], EfHatchCapabilityVerdict.Holds, windowStart.AddDays(6));
+        Judge(capabilities[1], EfHatchCapabilityVerdict.DoesNotHold, windowStart.AddDays(7));
+
+        foreach (var epic in new[] { firstEpic, secondEpic })
+            db.IssueEvents.Add(new EfHatchIssueEvent { IssueId = epic.Id, Actor = Actor, Kind = EfHatchIssueEvent.Created, At = epic.CreatedAt });
+
+        db.Comments.Add(new EfHatchComment
+        {
+            IssueId = firstEpic.Id, Author = Actor, Body = "which way?", Kind = EfHatchComment.Question, CreatedAt = windowStart.AddDays(8),
+        });
+        var merged = new EfHatchComment
+        {
+            IssueId = secondEpic.Id, Author = Actor, Body = "which store?", Kind = EfHatchComment.Question,
+            Level = QuestionLevels.MergeName, CreatedAt = windowStart.AddDays(9),
+        };
+        db.Comments.Add(merged);
+        await db.SaveChangesAsync();
+
+        db.Comments.Add(new EfHatchComment
+        {
+            IssueId = secondEpic.Id, Author = Actor, AuthorKind = ActorKind.Key, Body = "the first store",
+            Kind = EfHatchComment.Answer, AnswersId = merged.Id, CreatedAt = windowStart.AddDays(9).AddHours(1),
+        });
     }
 
     /// <summary>Where an issue ends up, and when it closed, worked out from its place in the line.</summary>
