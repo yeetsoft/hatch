@@ -12,7 +12,7 @@
 import type { ThemeChoice } from '@hatch/ui';
 import { DEFAULT_FILTER, isFiltering, toggleBlocked, toggleWaiting } from './filter';
 import type { CardFilter } from './filter';
-import { HOME, HOME_LABEL, navRows } from './nav';
+import { BOARD, HOME_LABEL, navRows } from './nav';
 import { PERMISSION_TITLE, PRE_APPROVAL_LEVELS, approvalLocked } from './preApproval';
 import type { PreApproval } from './preApproval';
 import { PRIORITY_LEVELS } from './priority';
@@ -264,7 +264,7 @@ export function commandList(ctx: CommandContext): Command[] {
         step: 'preapproval',
         run: (env) => env.openStep('preapproval'),
       },
-      goTo(HOME, HOME_LABEL),
+      goTo(BOARD, HOME_LABEL),
       // The Ballot has no nav row, but stays one search away.
       goTo('/ballot', 'Ballot'),
       ...navRows(ctx.isAdmin).map((row) => goTo(row.to, row.label)),
