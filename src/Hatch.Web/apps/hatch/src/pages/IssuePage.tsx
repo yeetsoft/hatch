@@ -102,7 +102,7 @@ import {
   shelveSentence,
   showsPresses,
 } from '../lib/latestChange';
-import { isObviated, isSettled, tileFill } from '../lib/columns';
+import { implementation, isObviated, isSettled, tileFill } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { filedFromCandidates } from '../lib/filedFrom';
 import { deleteQuestion } from '../lib/deletion';
@@ -118,6 +118,10 @@ import { waitingChild } from '../lib/next';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { fromComment, openQuestions } from '../lib/questions';
 import { barFraction, budgetDraft, budgetRequest, holdsLine, percentSpent, unpricedLine, writeBudget } from '../lib/budget';
+import { canMoveDown, canMoveUp, implementationNote, reordered, writeCapabilityOrder } from '../lib/capabilityEdit';
+import { CapabilityAddForm, CapabilityEditForm, CapabilityRemoveDialog } from '../components/CapabilityEditor';
+import { homeCardApplies } from '../lib/homeScreen';
+import { useMe } from '../lib/useMe';
 import { writeNoCode } from '../lib/noCode';
 import { writeReleaseNote } from '../lib/releaseNote';
 import { newestFirst } from '../lib/thread';
@@ -169,6 +173,7 @@ import type {
 export function IssuePage() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
+  const { me } = useMe();
 
   const [issue, setIssue] = useState<Issue | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
@@ -1213,7 +1218,15 @@ export function IssuePage() {
           It sits above the dependency chain and the description: an issue's
           children are the work, so "what is this made of" is read before
           "what is it waiting on". */}
-      <Capabilities issue={issue} board={board} capabilities={capabilities} error={capabilitiesError} />
+      <Capabilities
+        issue={issue}
+        board={board}
+        capabilities={capabilities}
+        error={capabilitiesError}
+        canEdit={homeCardApplies(me)}
+        running={issue.statusId === implementation(board.statuses)?.id}
+        onChanged={load}
+      />
 
       <Budget
         issue={issue}
@@ -1616,43 +1629,103 @@ function DependencyRow({
  * An ambition's capabilities: what must be true, how anyone would tell, and
  * what already holds.
  *
- * Read-only - adding and editing a capability stays HA-2491's, on the CLI;
- * this section only draws the `hatch capability add` command to start one.
- * Omitted entirely off any type but an ambition.
+ * `canEdit` draws Add, Edit, Remove and Move - a person's, never a key's or
+ * a browser nobody signed into; with it false the section is exactly what it
+ * has always been, down to the `hatch capability add` command. Omitted
+ * entirely off any type but an ambition.
  */
 export function Capabilities({
   issue,
   board,
   capabilities,
   error,
+  canEdit = false,
+  running = false,
+  onChanged = async () => {},
 }: {
   issue: Issue;
   board: Board;
   capabilities: Capability[] | null;
   error: string | null;
+  canEdit?: boolean;
+  /** Whether this ambition has reached the implementation column, where a
+      write here is a session's to work out the consequences of. */
+  running?: boolean;
+  onChanged?: () => Promise<void>;
 }) {
+  const [removing, setRemoving] = useState<Capability | null>(null);
+  const [moving, setMoving] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+
   if (issue.type !== 'ambition') return null;
 
   const now = new Date();
+  const ids = capabilities?.map((c) => c.id) ?? [];
+
+  async function move(id: number, direction: 'up' | 'down') {
+    const next = reordered(ids, id, direction);
+    if (next === null) return;
+
+    setMoving(true);
+    try {
+      const refusal = await writeCapabilityOrder(issue.key, next);
+      setMoveError(refusal);
+      if (refusal === null) await onChanged();
+    } finally {
+      setMoving(false);
+    }
+  }
 
   return (
     <IssueSection id="capabilities" title="Capabilities" count={capabilities ? capabilities.length : undefined} className="hatch-ambition-section">
       {error && <SectionNote kind="failed">{error}</SectionNote>}
       {!capabilities && !error && <SectionNote kind="loading">Loading…</SectionNote>}
 
+      {canEdit && running && <p className="text-muted hatch-ambition-note">{implementationNote}</p>}
+
       {capabilities && capabilities.length === 0 && (
         <>
           <SectionNote kind="empty">This ambition has no capabilities yet.</SectionNote>
-          <Command command={`hatch capability add ${issue.key} "<statement>" --how "<how to tell>"`} />
+          {canEdit ? (
+            <CapabilityAddForm issueKey={issue.key} onAdded={onChanged} />
+          ) : (
+            <Command command={`hatch capability add ${issue.key} "<statement>" --how "<how to tell>"`} />
+          )}
         </>
       )}
 
       {capabilities && capabilities.length > 0 && (
-        <ul className="hatch-progress-list">
-          {capabilities.map((capability) => (
-            <CapabilityRow key={capability.id} capability={capability} board={board} now={now} />
-          ))}
-        </ul>
+        <>
+          <ul className="hatch-progress-list">
+            {capabilities.map((capability, index) => (
+              <CapabilityRow
+                key={capability.id}
+                capability={capability}
+                board={board}
+                now={now}
+                issueKey={issue.key}
+                index={index}
+                count={capabilities.length}
+                canEdit={canEdit}
+                busy={moving}
+                onChanged={onChanged}
+                onMove={move}
+                onRemove={setRemoving}
+              />
+            ))}
+          </ul>
+          {moveError && <p className="text-danger">{moveError}</p>}
+          {canEdit && <CapabilityAddForm issueKey={issue.key} onAdded={onChanged} />}
+        </>
+      )}
+
+      {canEdit && (
+        <CapabilityRemoveDialog
+          issueKey={issue.key}
+          capability={removing}
+          onRemoved={onChanged}
+          onClose={() => setRemoving(null)}
+        />
       )}
     </IssueSection>
   );
@@ -2186,8 +2259,40 @@ function ChangeOutcomeLine({
  * One capability: its statement and how to tell, its state and, where the
  * state came from a verdict, that verdict's own trail - and the epics serving
  * it.
+ *
+ * `canEdit` adds Edit, Remove, Move up and Move down - the first row has no
+ * Move up, the last no Move down. Editing swaps the statement and how-to-tell
+ * lines for CapabilityEditForm in place; the row's other three pieces stay
+ * drawn, since only those two lines are open for writing.
  */
-function CapabilityRow({ capability, board, now }: { capability: Capability; board: Board; now: Date }) {
+function CapabilityRow({
+  capability,
+  board,
+  now,
+  issueKey,
+  index,
+  count,
+  canEdit,
+  busy,
+  onChanged,
+  onMove,
+  onRemove,
+}: {
+  capability: Capability;
+  board: Board;
+  now: Date;
+  issueKey: string;
+  index: number;
+  count: number;
+  canEdit: boolean;
+  /** A reorder is in flight - every row's move buttons wait for it together,
+      since a press here changes everyone's position. */
+  busy: boolean;
+  onChanged: () => Promise<void>;
+  onMove: (id: number, direction: 'up' | 'down') => Promise<void>;
+  onRemove: (capability: Capability) => void;
+}) {
+  const [editing, setEditing] = useState(false);
   const verdict = capability.newestVerdict;
 
   return (
@@ -2195,8 +2300,22 @@ function CapabilityRow({ capability, board, now }: { capability: Capability; boa
       <span className="text-muted">#{capability.position}</span>
 
       <div className="hatch-progress-title">
-        <p>{capability.statement}</p>
-        <p className="text-muted">{capability.howToTell}</p>
+        {editing ? (
+          <CapabilityEditForm
+            issueKey={issueKey}
+            capability={capability}
+            onSaved={async () => {
+              setEditing(false);
+              await onChanged();
+            }}
+            onCancel={() => setEditing(false)}
+          />
+        ) : (
+          <>
+            <p>{capability.statement}</p>
+            <p className="text-muted">{capability.howToTell}</p>
+          </>
+        )}
       </div>
 
       <div>
@@ -2217,6 +2336,27 @@ function CapabilityRow({ capability, board, now }: { capability: Capability; boa
           capability.servedBy.map((key) => <ServedByLink key={key} issueKey={key} board={board} />)
         )}
       </div>
+
+      {canEdit && !editing && (
+        <div className="hatch-capability-controls">
+          {canMoveUp(index) && (
+            <Button disabled={busy} onClick={() => void onMove(capability.id, 'up')} aria-label={`Move up: ${capability.statement}`}>
+              Move up
+            </Button>
+          )}
+          {canMoveDown(index, count) && (
+            <Button disabled={busy} onClick={() => void onMove(capability.id, 'down')} aria-label={`Move down: ${capability.statement}`}>
+              Move down
+            </Button>
+          )}
+          <Button disabled={busy} onClick={() => setEditing(true)} aria-label={`Edit: ${capability.statement}`}>
+            Edit
+          </Button>
+          <Button variant="danger" disabled={busy} onClick={() => onRemove(capability)} aria-label={`Remove: ${capability.statement}`}>
+            Remove
+          </Button>
+        </div>
+      )}
     </li>
   );
 }

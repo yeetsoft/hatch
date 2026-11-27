@@ -1,14 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Issue, Runner, Status } from '../types';
 import {
+  addCapability,
   confirmChatLink,
   createChatWorkspace,
   deleteChatLink,
+  editCapability,
   getChatLinks,
   getChatMembers,
   getChatSuggestion,
   getMyChat,
   linkChatMember,
+  moveCapabilities,
+  removeCapability,
   setChatLinkSwitches,
   unlinkChat,
   createRunner,
@@ -119,6 +123,60 @@ describe('runner orders', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/runners/here%3A%2Fcheckouts%2Fone/order',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+});
+
+describe('capability writes', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('POSTs the statement and how-to-tell line to add one', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await addCapability('AER-1', { statement: 'a', howToTell: 'b' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/issues/AER-1/capabilities',
+      expect.objectContaining({ method: 'POST', body: '{"statement":"a","howToTell":"b"}' }),
+    );
+  });
+
+  it('PATCHes the id with what changed', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await editCapability('AER-1', 5, { statement: 'a' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/issues/AER-1/capabilities/5',
+      expect.objectContaining({ method: 'PATCH', body: '{"statement":"a"}' }),
+    );
+  });
+
+  it('PUTs the order', async () => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await moveCapabilities('AER-1', [2, 1]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/issues/AER-1/capabilities/order',
+      expect.objectContaining({ method: 'PUT', body: '{"ids":[2,1]}' }),
+    );
+  });
+
+  it('DELETEs the id and tolerates the empty answer', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(removeCapability('AER-1', 5)).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/issues/AER-1/capabilities/5',
       expect.objectContaining({ method: 'DELETE' }),
     );
   });

@@ -34,12 +34,19 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
     private const string Capabilities = ".hatch-issue-section:has(> summary:text-matches(\"^Capabilities\"))";
     private const string Serves = ".hatch-issue-section:has(> summary:text-matches(\"^Serves\"))";
     private const string EpicsInFlight = ".hatch-issue-section:has(> summary:text-matches(\"^Epics in flight\"))";
+    private const string LatestChange = ".hatch-issue-section:has(> summary:text-matches(\"^Latest change\"))";
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     private static readonly string[] StateWords = ["Holds", "Does not hold", "Cannot tell", "Not checked"];
 
     private const string FirstStatement = "Partners can place an order without a phone call";
+
+    private const string SecondStatement = "An order is confirmed within a minute";
+    private const string SecondHowToTell = "Time an order from the button to the email";
+    private const string EditedStatement = "An order is confirmed within a minute of being placed";
+    private const string NewStatement = "Staff are told of every new order";
+    private const string NewHowToTell = "Place an order and look for the notice";
 
     /// <summary>One section's text and row count, found by its title, and the page's width against the viewport's, read in one script so they are one moment.</summary>
     private const string MeasureScript = """
@@ -87,6 +94,141 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
     {
         Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
         return RunAsync("AmbitionCapabilitiesPhone", "phone", DeviceProfile.IPhone14Pro);
+    }
+
+    /// <summary>
+    /// HA-2840's acceptance: a person adds, edits, reorders and removes a
+    /// capability from the page itself, with no CLI.
+    /// </summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task TheControls_AddEditReorderAndRemove_AtTheDesktopProfile() =>
+        RunEditingAsync("AmbitionCapabilitiesEditDesktop", "desktop", null);
+
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task TheControls_AddEditReorderAndRemove_AtThePhoneProfile()
+    {
+        Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
+        return RunEditingAsync("AmbitionCapabilitiesEditPhone", "phone", DeviceProfile.IPhone14Pro);
+    }
+
+    private async Task RunEditingAsync(string name, string profileName, DeviceProfile? profile)
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var harness = new E2eHarness(name);
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline, profile);
+
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+            var (ambition, epic) = await deadline.BoundAsync("filing a running ambition with two capabilities", () => FileRunningAmbitionAsync(baseUrl));
+
+            await harness.OpenAsync(deadline, baseUrl, $"/issues/{ambition}");
+            await harness.WaitForVisibleAsync(deadline, ".hatch-issue-page");
+            await harness.WaitForVisibleAsync(deadline, Capabilities);
+            await harness.WaitForVisibleAsync(deadline, $"{Capabilities} .hatch-capability-row");
+
+            var runningNote = await harness.EvaluateOnAsync<string>(deadline, "reading the Capabilities section", Capabilities, "(el) => el.textContent");
+            Assert.Contains("A session will work out what a change does to the epics in flight.", runningNote);
+
+            // Add a capability: the form puts it last, with no reload.
+            await ClickAndTypeAsync(harness, deadline, $"{Capabilities} input[aria-label=\"New capability's statement\"]", NewStatement);
+            await ClickAndTypeAsync(harness, deadline, $"{Capabilities} input[aria-label=\"New capability's how-to-tell line\"]", NewHowToTell);
+            await harness.ClickAsync(deadline, $"{Capabilities} button:text-is(\"Add a capability\")");
+            await harness.WaitForVisibleAsync(deadline, $"{Capabilities} .hatch-capability-row:has-text(\"{NewStatement}\")");
+
+            // Edit the second capability's statement in place.
+            await harness.ClickAsync(deadline, $"{Capabilities} button[aria-label=\"Edit: {SecondStatement}\"]");
+            await ClickAndTypeAsync(harness, deadline, $"input[aria-label=\"Statement: {SecondStatement}\"]", EditedStatement);
+            await harness.ClickAsync(deadline, ".hatch-capability-edit button:text-is(\"Save\")");
+            await harness.WaitForVisibleAsync(deadline, $"{Capabilities} .hatch-capability-row:has-text(\"{EditedStatement}\")");
+            await harness.WaitForHiddenAsync(deadline, ".hatch-capability-edit");
+
+            // Move the first capability down one place. Each row's title holds two
+            // <p> elements - the statement, then the how-to-tell line - so the
+            // statement is read per row rather than off a flat list of every <p>.
+            await harness.ClickAsync(deadline, $"{Capabilities} button[aria-label=\"Move down: {FirstStatement}\"]");
+            await harness.WaitForFunctionAsync(deadline, "waiting for the reorder to land", $$"""
+                (first) => {
+                  const section = [...document.querySelectorAll('details.hatch-issue-section')]
+                    .find((d) => d.querySelector(':scope > summary')?.textContent.startsWith('Capabilities'));
+                  const rows = section ? [...section.querySelectorAll('.hatch-capability-row')] : [];
+                  const statements = rows.map((row) => row.querySelector('.hatch-progress-title p')?.textContent ?? '');
+                  return statements[1] === first;
+                }
+                """, FirstStatement);
+
+            // Remove the capability the epic serves - the dialog names it.
+            await harness.ClickAsync(deadline, $"{Capabilities} button[aria-label=\"Remove: {FirstStatement}\"]");
+            await harness.WaitForVisibleAsync(deadline, "[role=dialog]");
+            var dialogText = await harness.EvaluateAsync<string>(
+                deadline, "reading the remove dialog", "() => document.querySelector('[role=dialog]')?.textContent ?? ''");
+            output.WriteLine($"remove dialog: {dialogText}");
+            Assert.Contains(epic, dialogText);
+            await harness.ClickAsync(deadline, "[role=dialog] button:text-is(\"Remove it\")");
+            await harness.WaitForHiddenAsync(deadline, "[role=dialog]");
+            // Scoped to Capabilities, not the whole page: Latest change keeps the
+            // removed statement, struck through, in the entry it just gained.
+            await harness.WaitForFunctionAsync(deadline, "waiting for the removed row to go", $$"""
+                (statement) => {
+                  const section = [...document.querySelectorAll('details.hatch-issue-section')]
+                    .find((d) => d.querySelector(':scope > summary')?.textContent.startsWith('Capabilities'));
+                  return !!section && !section.textContent.includes(statement);
+                }
+                """, FirstStatement);
+
+            // A refusal - a statement past the limit - shows beside the control, in the
+            // server's own sentence, and what was typed stays in the field.
+            await harness.ClickAsync(deadline, $"{Capabilities} button[aria-label=\"Edit: {NewStatement}\"]");
+            var tooLong = new string('x', 301);
+            await harness.SetValuePastMaxLengthAsync(deadline, $"input[aria-label=\"Statement: {NewStatement}\"]", tooLong);
+            await harness.ClickAsync(deadline, ".hatch-capability-edit button:text-is(\"Save\")");
+            await harness.WaitForVisibleAsync(deadline, ".hatch-capability-edit .text-danger");
+            var refusal = await harness.EvaluateOnAsync<string>(deadline, "reading the refusal", ".hatch-capability-edit .text-danger", "(el) => el.textContent");
+            Assert.Contains("a statement is at most 300 characters", refusal);
+            var kept = await harness.EvaluateOnAsync<string>(
+                deadline, "reading the kept statement", $"input[aria-label=\"Statement: {NewStatement}\"]", "(el) => el.value");
+            Assert.Equal(tooLong, kept);
+            await ScrollToAsync(harness, deadline, "Capabilities");
+            output.WriteLine($"saved {await harness.ScreenshotAsync(deadline, $"capabilities-refusal-{profileName}")}");
+            await harness.ClickAsync(deadline, ".hatch-capability-edit button:text-is(\"Cancel\")");
+
+            // Latest change shows the add, the edit and the remove - one change, not worked
+            // out yet, since nothing here ran a session - with no reload.
+            await harness.WaitForVisibleAsync(deadline, LatestChange);
+            var changeText = await harness.EvaluateOnAsync<string>(deadline, "reading Latest change", LatestChange, "(el) => el.textContent");
+            Assert.Contains("Added", changeText);
+            Assert.Contains("Changed", changeText);
+            Assert.Contains("Removed", changeText);
+            await ScrollToAsync(harness, deadline, "Latest change");
+            output.WriteLine($"saved {await harness.ScreenshotAsync(deadline, $"capabilities-latest-change-{profileName}")}");
+            Assert.Contains("has not been worked out yet", changeText);
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
+    /// <summary>Replaces what the box holds with <paramref name="text"/>, firing the events a person's typing would.</summary>
+    private static async Task ClickAndTypeAsync(E2eHarness harness, Deadline deadline, string box, string text)
+    {
+        await harness.ClickAsync(deadline, box);
+        await harness.SelectAllAsync(deadline);
+        await harness.InsertTextAsync(deadline, text);
     }
 
     private async Task RunAsync(string name, string profileName, DeviceProfile? profile)
@@ -214,7 +356,9 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
 
     /// <summary>
     /// HA-2703: on a desk the number, the statement, the state and what serves it start at
-    /// one place on every row; on a phone each row stacks them in that order.
+    /// one place on every row; on a phone each row stacks them in that order. A fifth piece,
+    /// Edit/Remove/Move (HA-2840), draws on every row here since a signed-out caller is not
+    /// what this harness is - see the class remarks.
     /// </summary>
     private void AssertColumns(JsonElement measured, bool phone)
     {
@@ -223,7 +367,7 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
             .ToList();
         Assert.Equal(4, rows.Count);
         foreach (var row in rows)
-            Assert.True(row.Count == 4, $"a capability row holds {row.Count} pieces, not four: {measured.GetProperty("columns")}");
+            Assert.True(row.Count == 5, $"a capability row holds {row.Count} pieces, not five: {measured.GetProperty("columns")}");
 
         output.WriteLine($"capability pieces, left then top, per row: {string.Join(" | ", rows.Select(r => string.Join(", ", r.Select(c => $"{c.Left:0.#}/{c.Top:0.#}"))))}");
 
@@ -235,7 +379,7 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
             return;
         }
 
-        for (var piece = 0; piece < 4; piece++)
+        for (var piece = 0; piece < 5; piece++)
             foreach (var row in rows.Skip(1))
                 Assert.True(
                     Math.Abs(row[piece].Left - rows[0][piece].Left) <= Tolerance,
@@ -329,5 +473,54 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
         var text = await response.Content.ReadAsStringAsync();
         Assert.True(response.IsSuccessStatusCode, $"POST {path} answered {(int)response.StatusCode}: {text}");
         return JsonSerializer.Deserialize<TResponse>(text, Web)!;
+    }
+
+    private static async Task<TResponse> GetAsync<TResponse>(HttpClient http, string path)
+    {
+        using var response = await http.GetAsync(path);
+        var text = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, $"GET {path} answered {(int)response.StatusCode}: {text}");
+        return JsonSerializer.Deserialize<TResponse>(text, Web)!;
+    }
+
+    /// <summary>
+    /// A project; an ambition with two capabilities, the first served by an
+    /// epic; "In Progress" marked as the implementation column and the
+    /// ambition moved into it, so the page draws the running note and a
+    /// write here opens a change nothing has worked out yet. Returns the
+    /// ambition's key and the epic's.
+    /// </summary>
+    private static async Task<(string Ambition, string Epic)> FileRunningAmbitionAsync(string baseUrl)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+
+        var statuses = await GetAsync<StatusDto[]>(http, "/api/statuses");
+        var inProgress = statuses.Single(s => s.Name == "In Progress");
+
+        using var implementation = await http.PutAsJsonAsync($"/api/statuses/{inProgress.Id}/implementation", new ImplementationRequest(true), Web);
+        var implementationText = await implementation.Content.ReadAsStringAsync();
+        Assert.True(implementation.IsSuccessStatusCode, $"PUT /api/statuses/{inProgress.Id}/implementation answered {(int)implementation.StatusCode}: {implementationText}");
+
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("CAE", "CAE"));
+        var ambition = await PostAsync<IssueCreateRequest, IssueDto>(
+            http, "/api/issues", new(project.Id, "ambition", "Changes to the ordering flow", null, null, null, null));
+
+        var first = await PostAsync<CapabilityCreateRequest, CapabilityDto>(
+            http, $"/api/issues/{ambition.Key}/capabilities", new(FirstStatement, "Place one as a partner and count the calls"));
+        await PostAsync<CapabilityCreateRequest, CapabilityDto>(
+            http, $"/api/issues/{ambition.Key}/capabilities", new(SecondStatement, SecondHowToTell));
+
+        var epic = await PostAsync<IssueCreateRequest, IssueDto>(
+            http, "/api/issues", new(project.Id, "epic", "A partner order form", null, ambition.Key, null, null));
+
+        using var serves = await http.PutAsJsonAsync($"/api/issues/{epic.Key}/serves", new IssueServesWriteRequest([first.Id]), Web);
+        var servesText = await serves.Content.ReadAsStringAsync();
+        Assert.True(serves.IsSuccessStatusCode, $"PUT /api/issues/{epic.Key}/serves answered {(int)serves.StatusCode}: {servesText}");
+
+        using var move = await http.PostAsJsonAsync($"/api/issues/{ambition.Key}/move", new IssueMoveRequest(inProgress.Id, null, null), Web);
+        var moveText = await move.Content.ReadAsStringAsync();
+        Assert.True(move.IsSuccessStatusCode, $"POST /api/issues/{ambition.Key}/move answered {(int)move.StatusCode}: {moveText}");
+
+        return (ambition.Key, epic.Key);
     }
 }

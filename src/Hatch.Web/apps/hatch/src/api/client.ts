@@ -18,6 +18,8 @@ import type {
   Board,
   BoardHealth,
   Capability,
+  CapabilityCreateRequest,
+  CapabilityPatchRequest,
   ChangelogReport,
   Comment,
   CommentCreateRequest,
@@ -758,6 +760,19 @@ export const getIssueDreams = (key: string) => fetchJson<Dream[]>(`/api/issues/$
 /** An ambition's capabilities, each with its state, its newest verdict and the
     epics serving it. 400 off an ambition - see IssueCapabilitiesController. */
 export const getIssueCapabilities = (key: string) => fetchJson<Capability[]>(`/api/issues/${seg(key)}/capabilities`);
+/** Adds a capability, last unless the server is given a position. A
+    refusal past the implementation column is a key's alone - see
+    IssueCapabilitiesController. */
+export const addCapability = (key: string, request: CapabilityCreateRequest) =>
+  fetchJson<Capability>(`/api/issues/${seg(key)}/capabilities`, { method: 'POST', ...asJson(request) });
+/** Edits a capability's statement, its how-to-tell line, or both. */
+export const editCapability = (key: string, id: number, request: CapabilityPatchRequest) =>
+  fetchJson<Capability>(`/api/issues/${seg(key)}/capabilities/${id}`, { method: 'PATCH', ...asJson(request) });
+/** Puts the capabilities in the order given - every one, once. */
+export const moveCapabilities = (key: string, ids: number[]) =>
+  fetchJson<Capability[]>(`/api/issues/${seg(key)}/capabilities/order`, { method: 'PUT', ...asJson({ ids }) });
+export const removeCapability = (key: string, id: number) =>
+  fetchJson<void>(`/api/issues/${seg(key)}/capabilities/${id}`, { method: 'DELETE' });
 /** What an issue serves, with each capability's ambition. Empty for any type
     that serves nothing - see IssueServesController. */
 export const getIssueServes = (key: string) => fetchJson<ServedCapability[]>(`/api/issues/${seg(key)}/serves`);
