@@ -62,9 +62,14 @@ public class AmbitionsPageTests(ITestOutputHelper output)
             const r = e.getBoundingClientRect();
             return { left: r.left, top: r.top };
           };
+          const edges = (e) => {
+            const r = e.getBoundingClientRect();
+            return { left: r.left, right: r.right };
+          };
           return {
             strip: strip
               ? {
+                  edges: edges(strip),
                   heading: strip.querySelector('h2')?.textContent?.trim() ?? '',
                   text: strip.textContent ?? '',
                   hrefs: [...strip.querySelectorAll('a')].map((a) => a.getAttribute('href') ?? ''),
@@ -73,6 +78,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
                 }
               : null,
             rows: [...document.querySelectorAll('.hatch-ambition-row')].map((row) => ({
+              edges: edges(row),
               title: row.querySelector('.hatch-ambition-title')?.textContent?.trim() ?? '',
               project: row.querySelector('.hatch-plan-project')?.textContent?.trim() ?? '',
               headings: texts(row, 'h3'),
@@ -93,6 +99,28 @@ public class AmbitionsPageTests(ITestOutputHelper output)
             })),
             innerWidth: window.innerWidth,
             scrollWidth: document.documentElement.scrollWidth,
+          };
+        }
+        """;
+
+    /// <summary>
+    /// Every row's title as it is drawn under one theme, beside what the app's
+    /// ink resolves to there: a probe reads the token, so no colour is written
+    /// down here.
+    /// </summary>
+    private const string TitleStyleScript = """
+        (theme) => {
+          document.documentElement.setAttribute('data-theme', theme);
+          const probe = document.body.appendChild(document.createElement('span'));
+          probe.style.color = 'var(--ink)';
+          const ink = getComputedStyle(probe).color;
+          probe.remove();
+          return {
+            ink,
+            titles: [...document.querySelectorAll('.hatch-ambition-title')].map((a) => {
+              const s = getComputedStyle(a);
+              return { color: s.color, decoration: s.textDecorationLine };
+            }),
           };
         }
         """;
@@ -336,6 +364,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
             else
                 AssertRowsStack(rowA, rowB);
             AssertStrip(measured.GetProperty("strip"), seeded);
+            AssertRowsMeetTheStrip(measured.GetProperty("strip"), rows);
             AssertFits(measured, profile is not null);
 
             // Nothing may scroll sideways once the strip and each row are the
@@ -343,6 +372,15 @@ public class AmbitionsPageTests(ITestOutputHelper output)
             AssertFits(await ScrollIntoViewAsync(harness, deadline, ".hatch-ambition-strip", 0), profile is not null);
             AssertFits(await ScrollIntoViewAsync(harness, deadline, ".hatch-ambition-row", 0), profile is not null);
             AssertFits(await ScrollIntoViewAsync(harness, deadline, ".hatch-ambition-row", 1), profile is not null);
+
+            // Last, since it sets the theme by hand and leaves it set.
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                var style = await harness.EvaluateAsync<JsonElement>(deadline, $"reading the titles in the {theme} theme", TitleStyleScript, theme);
+                output.WriteLine($"{profileName} /ambitions {theme} titles: {style}");
+                output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"ambitions-{profileName}-{theme}")}");
+                AssertTitlesAreTheApps(style, theme);
+            }
 
             harness.AssertNoPageErrors();
         }
@@ -382,6 +420,41 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         var epic = Assert.Single(row.GetProperty("epics").EnumerateArray());
         Assert.StartsWith("AMA-", epic.GetProperty("key").GetString());
         AssertEpic(epic, s.EpicTitle3, s.EpicColumn3, "#2");
+    }
+
+    /// <summary>HA-2839: each row's left and right edges are the strip's, from the two elements' own boxes.</summary>
+    private void AssertRowsMeetTheStrip(JsonElement strip, IReadOnlyList<JsonElement> rows)
+    {
+        var (left, right) = Edges(strip);
+        foreach (var row in rows)
+        {
+            var (rowLeft, rowRight) = Edges(row);
+            output.WriteLine($"edges: strip {left} to {right}, row {rowLeft} to {rowRight}");
+            Assert.True(
+                Math.Abs(rowLeft - left) <= Tolerance && Math.Abs(rowRight - right) <= Tolerance,
+                $"a row runs from {rowLeft} to {rowRight} and the strip from {left} to {right}");
+        }
+    }
+
+    private static (double Left, double Right) Edges(JsonElement element)
+    {
+        var edges = element.GetProperty("edges");
+        return (edges.GetProperty("left").GetDouble(), edges.GetProperty("right").GetDouble());
+    }
+
+    /// <summary>HA-2839: at rest a title is drawn in the app's ink with no underline, not in the browser's style for a link.</summary>
+    private static void AssertTitlesAreTheApps(JsonElement style, string theme)
+    {
+        var ink = style.GetProperty("ink").GetString();
+        var titles = style.GetProperty("titles").EnumerateArray().ToList();
+        Assert.Equal(2, titles.Count);
+        Assert.All(titles, title =>
+        {
+            Assert.True(
+                title.GetProperty("color").GetString() == ink,
+                $"a title in the {theme} theme is {title.GetProperty("color")} and the ink is {ink}");
+            Assert.Equal("none", title.GetProperty("decoration").GetString());
+        });
     }
 
     /// <summary>
