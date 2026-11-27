@@ -2731,6 +2731,12 @@ public sealed class Dispatch(
         && !Columns.AtOrPastImplementation(statuses, from.Id);
 
     /// <summary>
+    /// What a person does to start a draft ambition. The waiting fold and the
+    /// Ambitions page's sentence both end on it.
+    /// </summary>
+    public static string MoveItInto(string column) => $"move it into \"{column}\"";
+
+    /// <summary>
     /// Whether this move is an ambition's pass: <see cref="PassStands"/> and
     /// the target <see cref="ReviewTarget"/> gave is the column itself. The
     /// one question the self-move folds and kinds ask, so a pass is never read
@@ -3495,7 +3501,7 @@ public sealed class Dispatch(
         // A draft ambition with no row for its move is not missing a playbook:
         // starting it is a person's move into the implementation column.
         if (playbook is null && ShapeStands(issue, from, statuses) && implementation is { } start)
-            return new Blocking($"waits for a person to start it - move it into \"{start.Name}\"", BlockedKinds.Person);
+            return new Blocking($"waits for a person to start it - {MoveItInto(start.Name)}", BlockedKinds.Person);
 
         return playbook is null
             ? new Blocking(repoSourced is { Trunk: { } trunk }

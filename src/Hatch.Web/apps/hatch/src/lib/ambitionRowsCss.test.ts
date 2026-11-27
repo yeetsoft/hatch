@@ -58,6 +58,18 @@ describe('the Ambitions list', () => {
   });
 });
 
+describe('the stage on a row', () => {
+  it('colours its pill from the fills the app already has', () => {
+    expect(declarationsOf('.hatch-stage-pill').color).toBe('var(--muted)');
+    for (const stage of ['budget-spent', 'stopped']) {
+      expect(declarationsOf(`.hatch-stage-${stage}`).background).toBe('var(--warn-bg)');
+    }
+    for (const stage of ['running', 'complete', 'done']) {
+      expect(declarationsOf(`.hatch-stage-${stage}`).background).toBe('var(--success-bg)');
+    }
+  });
+});
+
 describe('a row as a card', () => {
   it('has the card pad and ground, no grab cursor and no hover ring of the board tile', () => {
     const row = declarationsOf(ROW);

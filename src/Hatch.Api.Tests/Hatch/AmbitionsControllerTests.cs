@@ -1,11 +1,13 @@
 using Hatch.Api.Modules.Hatch;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// Where an ambition stands, read as four counts and a list of open epics.
+/// Where an ambition stands: its stage and the sentence under it, four counts
+/// and a list of open epics.
 ///
 /// Each case seeds one capability per fact it pins, so a count of one says
 /// which rule put it there. <c>Why</c> is pinned as present or absent, not by
@@ -310,18 +312,191 @@ public class AmbitionsControllerTests
     }
 
     [Fact]
-    public async Task AmbitionsComeBackInBoardOrder_ColumnThenRankThenId()
+    public async Task InsideAGroup_AmbitionsKeepBoardOrder_ColumnThenRankThenId()
     {
         var h = await NewAsync();
-        var later = await h.FileAsync("ambition", "later column", statusId: h.Doing);
-        var lowRank = await h.FileAsync("ambition", "low rank", rank: 10);
-        var highRank = await h.FileAsync("ambition", "high rank", rank: 20);
-        var tieFirst = await h.FileAsync("ambition", "tie first", rank: 30);
-        var tieSecond = await h.FileAsync("ambition", "tie second", rank: 30);
+        var later = await h.FileAsync("ambition", "later column", statusId: h.Review, rank: 1);
+        var lowRank = await h.FileAsync("ambition", "low rank", statusId: h.Verify, rank: 10);
+        var earlier = await h.FileAsync("ambition", "earlier column", statusId: h.Verify, rank: 5);
+        var tieFirst = await h.FileAsync("ambition", "tie first", statusId: h.Review, rank: 30);
+        var tieSecond = await h.FileAsync("ambition", "tie second", statusId: h.Review, rank: 30);
 
-        var keys = (await h.ReadAsync()).Select(r => r.Key);
+        var rows = await h.ReadAsync();
 
-        Assert.Equal(new[] { lowRank, highRank, tieFirst, tieSecond, later }.Select(h.Key), keys);
+        Assert.All(rows, r => Assert.Equal("stopped", r.Stage));
+        Assert.Equal(new[] { earlier, lowRank, later, tieFirst, tieSecond }.Select(h.Key), rows.Select(r => r.Key));
+    }
+
+    // ---- The stage ----
+
+    [Fact]
+    public async Task AnAmbitionInATerminalColumn_IsDone()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("ambition", "a", statusId: h.Done);
+
+        await h.AssertStageAsync("done", "It stands in \"done\", which closes work.");
+    }
+
+    [Fact]
+    public async Task AnAmbitionInADeferredColumn_IsShelved_NotDraft()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("ambition", "a", statusId: h.Shelved);
+
+        await h.AssertStageAsync("shelved", "It stands in \"shelved\" and is set aside until a person moves it.");
+    }
+
+    [Fact]
+    public async Task AnAmbitionInTheShapingRowsFromColumn_IsShaping()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("ambition", "a", statusId: h.Idea);
+
+        await h.AssertStageAsync("shaping", "It is being shaped into a title, a description and capabilities.");
+    }
+
+    [Fact]
+    public async Task AShapingRowOfAnotherProject_DoesNotShapeThisOne()
+    {
+        var h = await NewAsync(shapingProject: s => s.Other);
+        await h.FileAsync("ambition", "a", statusId: h.Idea);
+
+        Assert.Equal("draft", Assert.Single(await h.ReadAsync()).Stage);
+    }
+
+    [Fact]
+    public async Task AnAmbitionLeftOfImplementationWithNoCapability_IsADraft()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("ambition", "a");
+
+        await h.AssertStageAsync("draft", "It has no capabilities yet.");
+    }
+
+    [Fact]
+    public async Task AnAmbitionLeftOfImplementationWithACapability_IsReady()
+    {
+        var h = await NewAsync();
+        await h.CapabilityAsync(await h.FileAsync("ambition", "a"), 1);
+
+        await h.AssertStageAsync("ready", "Nothing runs until a person starts it - move it into \"doing\".");
+    }
+
+    [Fact]
+    public async Task AnAmbitionWhoseBudgetIsSpentBeneathIt_IsBudgetSpent_EvenWhereEveryCapabilityHolds()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a", statusId: h.Doing, budget: 10m);
+        await h.VerdictAsync(await h.CapabilityAsync(ambition, 1), EfHatchCapabilityVerdict.Holds);
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id, statusId: h.Done);
+        var story = await h.FileAsync("story", "s", parentId: epic.Id, project: h.Other, statusId: h.Done);
+        await h.LogAsync(ambition, 4m);
+        await h.LogAsync(story, 6m);
+
+        await h.AssertStageAsync("budget spent", "Its budget is spent - raise it or clear it before the next pass.");
+    }
+
+    [Fact]
+    public async Task ABudgetNotYetReached_LeavesTheAmbitionRunning_AndOneAmbitionsSpendIsNotAnothers()
+    {
+        var h = await NewAsync();
+        var under = await h.FileAsync("ambition", "under", statusId: h.Doing, budget: 10m, rank: 1);
+        var over = await h.FileAsync("ambition", "over", statusId: h.Doing, budget: 10m, rank: 2);
+        await h.LogAsync(under, 9.99m);
+        await h.LogAsync(await h.FileAsync("epic", "e", parentId: over.Id, statusId: h.Done), 50m);
+
+        var rows = await h.ReadAsync();
+
+        Assert.Equal("running", rows.Single(r => r.Key == h.Key(under)).Stage);
+        Assert.Equal("budget spent", rows.Single(r => r.Key == h.Key(over)).Stage);
+    }
+
+    [Fact]
+    public async Task AnAmbitionWhoseEveryCapabilityHolds_IsComplete()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a", statusId: h.Doing);
+        await h.VerdictAsync(await h.CapabilityAsync(ambition, 1), EfHatchCapabilityVerdict.Holds);
+        await h.VerdictAsync(await h.CapabilityAsync(ambition, 2), EfHatchCapabilityVerdict.Holds);
+
+        await h.AssertStageAsync("complete", "Every capability holds, so a pass has nothing left to do.");
+    }
+
+    [Fact]
+    public async Task ARunningAmbitionWithAFullRoom_SaysWhatTheQueueSays()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a", statusId: h.Doing);
+        await h.CapabilityAsync(ambition, 1);
+        await h.FileAsync("epic", "open", parentId: ambition.Id);
+
+        await h.AssertStageAsync("running", "1 of its epics is open, and it runs 1 at once - the next pass runs when one closes");
+    }
+
+    [Fact]
+    public async Task ARunningAmbitionWithRoom_RunsAsSoonAsARunnerTakesIt()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a", statusId: h.Doing, wipLimit: 2);
+        await h.FileAsync("epic", "open", parentId: ambition.Id);
+
+        // No capability, so "every capability holds" is not true of it either.
+        await h.AssertStageAsync("running", "A pass runs as soon as a runner takes it.");
+    }
+
+    [Fact]
+    public async Task AnAmbitionPastTheImplementationColumn_IsStopped()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("ambition", "a", statusId: h.Review);
+
+        await h.AssertStageAsync("stopped", "It stands in \"review\", and a pass runs only in \"doing\".");
+    }
+
+    [Fact]
+    public async Task OnABoardWithNoImplementationColumn_AnOpenAmbitionIsStopped()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("ambition", "a", statusId: h.Todo);
+
+        // One open column and a terminal one: nothing moves into a review column.
+        h.Db.Playbooks.RemoveRange(h.Db.Playbooks);
+        h.Db.Statuses.RemoveRange(h.Db.Statuses.Where(s => s.Id != h.Todo && s.Id != h.Done));
+        await h.Db.SaveChangesAsync();
+
+        await h.AssertStageAsync("stopped", "It stands in \"todo\", and no column on this board is one a pass runs in.");
+    }
+
+    [Fact]
+    public async Task AmbitionsComeBackGroupedByStage_WithTheFinishedOnesLast()
+    {
+        var h = await NewAsync();
+
+        // Filed backwards, with ranks that would order them the wrong way.
+        var shelved = await h.FileAsync("ambition", "shelved", statusId: h.Shelved, rank: 1);
+        var done = await h.FileAsync("ambition", "done", statusId: h.Done, rank: 2);
+        var draft = await h.FileAsync("ambition", "draft", rank: 3);
+        var shaping = await h.FileAsync("ambition", "shaping", statusId: h.Idea, rank: 4);
+        var readySecond = await h.FileAsync("ambition", "ready second", rank: 6);
+        var readyFirst = await h.FileAsync("ambition", "ready first", rank: 5);
+        var complete = await h.FileAsync("ambition", "complete", statusId: h.Doing, rank: 7);
+        var stopped = await h.FileAsync("ambition", "stopped", statusId: h.Review, rank: 8);
+        var running = await h.FileAsync("ambition", "running", statusId: h.Doing, rank: 9);
+        var spent = await h.FileAsync("ambition", "spent", statusId: h.Doing, rank: 10, budget: 1m);
+        await h.CapabilityAsync(readySecond, 1);
+        await h.CapabilityAsync(readyFirst, 1);
+        await h.VerdictAsync(await h.CapabilityAsync(complete, 1), EfHatchCapabilityVerdict.Holds);
+        await h.LogAsync(spent, 1m);
+
+        var rows = await h.ReadAsync();
+
+        Assert.Equal(
+            new[] { spent, running, stopped, complete, readyFirst, readySecond, shaping, draft, done, shelved }.Select(h.Key),
+            rows.Select(r => r.Key));
+        Assert.Equal(
+            ["budget spent", "running", "stopped", "complete", "ready", "ready", "shaping", "draft", "done", "shelved"],
+            rows.Select(r => r.Stage));
     }
 
     [Fact]
@@ -366,8 +541,11 @@ public class AmbitionsControllerTests
         public required AmbitionsController Ambitions { get; init; }
         public required int ProjectId { get; init; }
         public required int Other { get; init; }
+        public required int Idea { get; init; }
         public required int Todo { get; init; }
         public required int Doing { get; init; }
+        public required int Review { get; init; }
+        public required int Verify { get; init; }
         public required int Done { get; init; }
         public required int Shelved { get; init; }
 
@@ -376,7 +554,7 @@ public class AmbitionsControllerTests
 
         public async Task<EfHatchIssue> FileAsync(
             string type, string title, int? statusId = null, long? parentId = null, int? project = null,
-            int? rank = null, bool held = false, string? dangerous = null, int? wipLimit = null)
+            int? rank = null, bool held = false, string? dangerous = null, int? wipLimit = null, decimal? budget = null)
         {
             var issue = new EfHatchIssue
             {
@@ -391,6 +569,7 @@ public class AmbitionsControllerTests
                 Held = held,
                 Dangerous = dangerous,
                 WipLimit = wipLimit,
+                BudgetUsd = budget,
                 CreatedBy = "operator",
                 CreatedAt = Now,
                 UpdatedAt = Now,
@@ -462,6 +641,25 @@ public class AmbitionsControllerTests
             await Db.SaveChangesAsync();
         }
 
+        public async Task LogAsync(EfHatchIssue issue, decimal cost)
+        {
+            Db.WorkLog.Add(new EfHatchWorkLogEntry
+            {
+                IssueId = issue.Id, SessionId = $"s-{Guid.NewGuid():N}",
+                StartedAt = Now, EndedAt = Now, DurationMs = 0, CreatedAt = Now, CostUsd = cost,
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The one ambition's stage and sentence.</summary>
+        public async Task AssertStageAsync(string stage, string why)
+        {
+            var row = Assert.Single(await ReadAsync());
+
+            Assert.Equal((stage, why), (row.Stage, row.StageWhy));
+        }
+
         public async Task<AmbitionRowDto[]> ReadAsync(params int[] projectIds) =>
             Value(await Ambitions.GetAmbitions(projectIds.Length == 0 ? null : projectIds.ToList(), default));
 
@@ -470,29 +668,48 @@ public class AmbitionsControllerTests
             IssueKey.Format(issue.ProjectId == ProjectId ? "AER" : "OPS", issue.Number);
     }
 
-    /// <summary>Two projects, and a board with a column to wait in, one to work in, one to finish in and one to shelve in.</summary>
-    private static async Task<Harness> NewAsync()
+    /// <summary>
+    /// Two projects, and a board with a column to shape in, one to wait in, one
+    /// ticked as where code is written, two past it, one to finish in and one to
+    /// shelve in - with the row that shapes ambitions out of the first, for
+    /// every project unless <paramref name="shapingProject"/> names one.
+    /// </summary>
+    private static async Task<Harness> NewAsync(Func<(int Here, int Other), int>? shapingProject = null)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         var other = new EfHatchProject { Key = "OPS", Name = "Operations", CreatedAt = Now };
+        var idea = new EfHatchStatus { Name = "idea", SortOrder = 10 };
         var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
-        var doing = new EfHatchStatus { Name = "doing", SortOrder = 30 };
+        var doing = new EfHatchStatus { Name = "doing", SortOrder = 30, IsImplementation = true };
+        var review = new EfHatchStatus { Name = "review", SortOrder = 35 };
+        var verify = new EfHatchStatus { Name = "verify", SortOrder = 33 };
         var done = new EfHatchStatus { Name = "done", SortOrder = 40, IsTerminal = true };
         var shelved = new EfHatchStatus { Name = "shelved", SortOrder = 50, IsDeferred = true };
-        db.AddRange(project, other, todo, doing, done, shelved);
+        db.AddRange(project, other, idea, todo, doing, review, verify, done, shelved);
+        await db.SaveChangesAsync();
+
+        db.Playbooks.Add(new EfHatchPlaybook
+        {
+            FromStatusId = idea.Id, ToStatusId = todo.Id, Types = "ambition", Shape = "any", ShapesAmbition = true,
+            ProjectId = shapingProject?.Invoke((project.Id, other.Id)), Prompt = "shape it", Model = "sonnet", Effort = "high",
+            CreatedAt = Now, UpdatedAt = Now,
+        });
         await db.SaveChangesAsync();
 
         return new Harness
         {
             Db = db,
-            Ambitions = new AmbitionsController(db, new StubActorDirectory()),
+            Ambitions = new AmbitionsController(db, new StubActorDirectory(), new FakeTimeProvider(Now)),
             ProjectId = project.Id,
             Other = other.Id,
+            Idea = idea.Id,
             Todo = todo.Id,
             Doing = doing.Id,
+            Review = review.Id,
+            Verify = verify.Id,
             Done = done.Id,
             Shelved = shelved.Id,
         };

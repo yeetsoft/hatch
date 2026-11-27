@@ -10,7 +10,7 @@ import { message } from '../lib/errors';
 import { scopedPath } from '../lib/scope';
 import { useLoaded } from '../lib/useLoaded';
 import { useScope } from '../lib/useScope';
-import type { AmbitionRow, Ballot, BallotNode, Question, Status } from '../types';
+import type { AmbitionRow, AmbitionStage, Ballot, BallotNode, Question, Status } from '../types';
 
 /** The reads this page is made of, arriving together so a pill is never drawn
     without the colour of its column. The ballot is the exception in what it
@@ -27,8 +27,8 @@ export interface AmbitionsView {
 
 /**
  * Every ambition across projects: what you are driving at, each checked against
- * the trunk on every pass. One row per ambition, with its capabilities as a
- * bar and the epics in flight beside it.
+ * the trunk on every pass. One row per ambition, grouped by stage, with what it
+ * needs next, its capabilities as a bar and the epics in flight beside it.
  *
  * It narrows to the tab's scope as `PlanPage` does, and draws only a fetch made
  * for the scope now in force.
@@ -160,17 +160,64 @@ export function WaitingStrip({
   );
 }
 
-/** The rows, or the one sentence saying there are none in scope. */
+/** The stages whose ambitions are folded away at the foot of the list. */
+const FINISHED: readonly AmbitionStage[] = ['done', 'shelved'];
+
+/** A stage as it is drawn: `budget spent` reads "Budget spent". */
+function stageWord(stage: AmbitionStage): string {
+  return stage.charAt(0).toUpperCase() + stage.slice(1);
+}
+
+/**
+ * The rows under a heading for each stage, then the finished ones folded under
+ * one line; or the one sentence saying there are none in scope.
+ *
+ * The server sends the rows grouped and in order, so this only cuts them where
+ * the stage changes and never sorts: a group's place is where its first row is.
+ */
 export function AmbitionList({ ambitions, statuses }: { ambitions: AmbitionRow[]; statuses: Status[] }) {
   if (ambitions.length === 0) return <EmptyState message="No ambition in scope." />;
 
-  return (
+  const groups = new Map<AmbitionStage, AmbitionRow[]>();
+  const finished: AmbitionRow[] = [];
+  for (const row of ambitions) {
+    if (FINISHED.includes(row.stage)) finished.push(row);
+    else groups.set(row.stage, [...(groups.get(row.stage) ?? []), row]);
+  }
+
+  const list = (rows: AmbitionRow[]) => (
     <ul className="hatch-ambition-list">
-      {ambitions.map((row) => (
+      {rows.map((row) => (
         <AmbitionRowView key={row.key} row={row} statuses={statuses} />
       ))}
     </ul>
   );
+
+  return (
+    <div className="hatch-ambition-groups">
+      {[...groups].map(([stage, rows]) => (
+        <section key={stage}>
+          <h2 className="hatch-ambition-group">
+            {stageWord(stage)}, {rows.length}
+          </h2>
+          {list(rows)}
+        </section>
+      ))}
+
+      {/* Closed until pressed: finished work is context, not the page. */}
+      {finished.length > 0 && (
+        <details className="hatch-ambition-finished">
+          <summary>{finished.length} finished</summary>
+          {list(finished)}
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** An ambition's stage as a pill, where a row's own column pill would sit. */
+function StagePill({ stage }: { stage: AmbitionStage }) {
+  return <span className={`hatch-stage-pill hatch-stage-${stage.replace(/ /g, '-')}`}>{stageWord(stage)}</span>;
 }
 
 /** The column as a pill, or its name as muted text where the list lacks it. */
@@ -188,7 +235,8 @@ const SEGMENTS = [
   { count: (r: AmbitionRow) => r.notStarted, label: 'not started', cls: 'not-started' },
 ] as const;
 
-/** One ambition: its head, its capabilities as a bar, and its open epics. */
+/** One ambition: its head with its stage and what it needs, its capabilities
+    as a bar, and its open epics. */
 export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses: Status[] }) {
   const drawn = SEGMENTS.map((s) => ({ ...s, n: s.count(row) })).filter((s) => s.n > 0);
 
@@ -200,8 +248,9 @@ export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses:
         </Link>
         <span className="hatch-ambition-head-meta">
           <span className="hatch-plan-project">{row.projectKey}</span>
-          <ColumnPill statusId={row.statusId} statusName={row.statusName} statuses={statuses} />
+          <StagePill stage={row.stage} />
         </span>
+        <p className="hatch-ambition-why">{row.stageWhy}</p>
       </div>
 
       <div className="hatch-ambition-part">
