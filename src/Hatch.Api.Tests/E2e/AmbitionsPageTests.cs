@@ -61,7 +61,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     private const string TitleDone = "Invoices go out the day an order ships";
 
     /// <summary>
-    /// Every row, the strip and the page's width against the viewport's, read in
+    /// Every row, both tiles and the page's width against the viewport's, read in
     /// one script so they are one moment. A row is found by its title, never by
     /// its place.
     /// </summary>
@@ -69,26 +69,41 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         () => {
           const texts = (root, selector) => [...root.querySelectorAll(selector)].map((e) => (e.textContent ?? '').trim());
           const strip = document.querySelector('.hatch-ambition-strip');
+          const capabilities = document.querySelector('.hatch-ambition-capabilities-tile');
+          const tiles = document.querySelector('.hatch-ambition-tiles');
           const place = (e) => {
             if (!e) return null;
             const r = e.getBoundingClientRect();
             return { left: r.left, top: r.top };
           };
           const edges = (e) => {
+            if (!e) return null;
             const r = e.getBoundingClientRect();
             return { left: r.left, right: r.right };
           };
+          const tile = (e) => ({
+            heading: e.querySelector('h2')?.textContent?.trim() ?? '',
+            value: e.querySelector('.hatch-health-value')?.textContent?.trim() ?? '',
+            note: e.querySelector('.hatch-ambition-tile-note')?.textContent?.trim() ?? '',
+            text: e.textContent ?? '',
+            place: place(e),
+          });
           return {
             strip: strip
               ? {
-                  edges: edges(strip),
-                  heading: strip.querySelector('h2')?.textContent?.trim() ?? '',
-                  text: strip.textContent ?? '',
+                  ...tile(strip),
                   hrefs: [...strip.querySelectorAll('a')].map((a) => a.getAttribute('href') ?? ''),
                   strong: texts(strip, 'strong'),
                   keys: texts(strip, '.hatch-plan-key'),
+                  link: texts(strip, '.hatch-ambition-tile-link'),
+                  linkUnderline: (() => {
+                    const a = strip.querySelector('.hatch-ambition-tile-link');
+                    return a ? getComputedStyle(a).textDecorationLine : '';
+                  })(),
                 }
               : null,
+            capabilities: capabilities ? tile(capabilities) : null,
+            tiles: tiles ? { edges: edges(tiles) } : null,
             rows: [...document.querySelectorAll('.hatch-ambition-row')].map((row) => ({
               edges: edges(row),
               title: row.querySelector('.hatch-ambition-title')?.textContent?.trim() ?? '',
@@ -369,6 +384,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
 
             await harness.OpenAsync(deadline, baseUrl, "/ambitions");
             await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-strip");
+            await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-capabilities-tile");
             await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-row");
             await harness.WaitForFunctionAsync(
                 deadline, "waiting for every ambition row", "() => document.querySelectorAll('.hatch-ambition-row').length === 5");
@@ -389,7 +405,9 @@ public class AmbitionsPageTests(ITestOutputHelper output)
                 AssertRowsStack(rowA, rowB);
             AssertStages(measured, rows, seeded);
             AssertStrip(measured.GetProperty("strip"), seeded);
-            AssertRowsMeetTheStrip(measured.GetProperty("strip"), rows.Where(r => r.GetProperty("shown").GetBoolean()).ToList());
+            AssertCapabilitiesTile(measured.GetProperty("capabilities"));
+            AssertRowsMeetTheTiles(measured.GetProperty("tiles"), rows.Where(r => r.GetProperty("shown").GetBoolean()).ToList());
+            AssertTilesPlaced(measured.GetProperty("strip"), measured.GetProperty("capabilities"), stacked: profile is not null);
             AssertFits(measured, profile is not null);
 
             // Nothing may scroll sideways once the strip and each row are the
@@ -407,7 +425,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
             Assert.True(opened.GetProperty("fold").GetProperty("open").GetBoolean());
             Assert.All(opened.GetProperty("rows").EnumerateArray(), r => Assert.True(r.GetProperty("shown").GetBoolean()));
             AssertFits(opened, profile is not null);
-            AssertRowsMeetTheStrip(opened.GetProperty("strip"), opened.GetProperty("rows").EnumerateArray().ToList());
+            AssertRowsMeetTheTiles(opened.GetProperty("tiles"), opened.GetProperty("rows").EnumerateArray().ToList());
 
             // Last, since it sets the theme by hand and leaves it set.
             foreach (var theme in new[] { "light", "dark" })
@@ -493,17 +511,17 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         AssertEpic(epic, s.EpicTitle3, s.EpicColumn3, "#2");
     }
 
-    /// <summary>HA-2839: each row's left and right edges are the strip's, from the two elements' own boxes.</summary>
-    private void AssertRowsMeetTheStrip(JsonElement strip, IReadOnlyList<JsonElement> rows)
+    /// <summary>HA-2839, HA-2847: each row's left and right edges are the two tiles', taken together, from the elements' own boxes.</summary>
+    private void AssertRowsMeetTheTiles(JsonElement tiles, IReadOnlyList<JsonElement> rows)
     {
-        var (left, right) = Edges(strip);
+        var (left, right) = Edges(tiles);
         foreach (var row in rows)
         {
             var (rowLeft, rowRight) = Edges(row);
-            output.WriteLine($"edges: strip {left} to {right}, row {rowLeft} to {rowRight}");
+            output.WriteLine($"edges: tiles {left} to {right}, row {rowLeft} to {rowRight}");
             Assert.True(
                 Math.Abs(rowLeft - left) <= Tolerance && Math.Abs(rowRight - right) <= Tolerance,
-                $"a row runs from {rowLeft} to {rowRight} and the strip from {left} to {right}");
+                $"a row runs from {rowLeft} to {rowRight} and the tiles from {left} to {right}");
         }
     }
 
@@ -595,12 +613,43 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     /// <summary>One decision waiting, on the first ambition and the epic carrying the question, linking to the ballot; the second ambition is not in it.</summary>
     private static void AssertStrip(JsonElement strip, Seeded s)
     {
-        Assert.Equal("1 decision waiting on you", strip.GetProperty("heading").GetString());
+        Assert.Equal("Waiting on you", strip.GetProperty("heading").GetString());
+        Assert.Equal("1 decision", strip.GetProperty("value").GetString());
+        Assert.Equal("Holding 1 open issue. The oldest was just asked.", strip.GetProperty("note").GetString());
+        Assert.Equal(["Open the ballot"], Strings(strip, "link"));
+        Assert.Equal("underline", strip.GetProperty("linkUnderline").GetString());
         Assert.Equal([s.TitleA], Strings(strip, "strong"));
         Assert.Equal([s.Epic1], Strings(strip, "keys"));
         Assert.DoesNotContain(s.TitleB, strip.GetProperty("text").GetString());
         Assert.All(Strings(strip, "hrefs"), href => Assert.EndsWith("/ballot", href));
         Assert.NotEmpty(Strings(strip, "hrefs"));
+    }
+
+    /// <summary>One of the six capabilities holds, two more are in flight, and the one that holds only just began.</summary>
+    private static void AssertCapabilitiesTile(JsonElement tile)
+    {
+        Assert.Equal("Capabilities that hold", tile.GetProperty("heading").GetString());
+        Assert.Equal("1 of 7", tile.GetProperty("value").GetString());
+        Assert.Equal("2 more in flight. 1 newly holding this week.", tile.GetProperty("note").GetString());
+    }
+
+    /// <summary>Side by side they share a top; stacked they share a left, the second below the first.</summary>
+    private void AssertTilesPlaced(JsonElement first, JsonElement second, bool stacked)
+    {
+        var a = first.GetProperty("place");
+        var b = second.GetProperty("place");
+        output.WriteLine($"tile places: ({a.GetProperty("left")}, {a.GetProperty("top")}) and ({b.GetProperty("left")}, {b.GetProperty("top")})");
+
+        if (stacked)
+        {
+            Assert.True(Math.Abs(a.GetProperty("left").GetDouble() - b.GetProperty("left").GetDouble()) <= Tolerance, "the stacked tiles do not share a left");
+            Assert.True(b.GetProperty("top").GetDouble() > a.GetProperty("top").GetDouble(), "the second tile is not below the first");
+        }
+        else
+        {
+            Assert.True(Math.Abs(a.GetProperty("top").GetDouble() - b.GetProperty("top").GetDouble()) <= Tolerance, "the tiles do not share a top");
+            Assert.True(b.GetProperty("left").GetDouble() > a.GetProperty("left").GetDouble(), "the second tile is not beside the first");
+        }
     }
 
     private static List<string> Strings(JsonElement element, string property) =>

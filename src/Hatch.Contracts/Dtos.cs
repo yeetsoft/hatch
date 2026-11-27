@@ -3412,12 +3412,13 @@ public record CapabilityDto(
 /// <param name="InFlight">Capabilities not held that an open epic serves, where at least one of those epics is not waiting on a person.</param>
 /// <param name="WaitsOnPerson">Capabilities not held that open epics serve, every one of them waiting on a person.</param>
 /// <param name="NotStarted">Capabilities neither held nor served by an open epic.</param>
+/// <param name="NewlyHolding">Of <paramref name="Holds"/>, those whose unbroken run of holds began within the last seven days.</param>
 /// <param name="Open">The epics open beneath the ambition, in rank order. An epic is open when its column is neither closed nor deferred.</param>
 /// <param name="ChildBeyondScope">Some child of this ambition is in a project the reader's scope does not hold. No key and no count of it is told.</param>
 public record AmbitionRowDto(
     string Key, string ProjectKey, string Title, int StatusId, string StatusName,
     string Stage, string StageWhy, int Limit,
-    int Capabilities, int Holds, int InFlight, int WaitsOnPerson, int NotStarted,
+    int Capabilities, int Holds, int InFlight, int WaitsOnPerson, int NotStarted, int NewlyHolding,
     IReadOnlyList<AmbitionOpenEpicDto> Open, bool ChildBeyondScope = false);
 
 /// <summary>One epic open beneath an ambition, as the Ambitions read draws it.</summary>

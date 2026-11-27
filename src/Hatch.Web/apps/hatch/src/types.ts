@@ -1148,6 +1148,8 @@ export interface AmbitionRow {
   inFlight: number;
   waitsOnPerson: number;
   notStarted: number;
+  /** Of `holds`, those whose unbroken run of holds began within seven days. */
+  newlyHolding: number;
   open: AmbitionOpenEpic[];
   /** Some child is in a project the reader's scope does not hold. */
   childBeyondScope: boolean;

@@ -63,9 +63,9 @@ public class AmbitionsReadCostTests
 
     /// <summary>
     /// The ambitions, dealt round the columns starting at the implementation one.
-    /// Each has a capability, an epic that serves it and a work log row; those in
-    /// the implementation column have a budget their work has spent and a pass
-    /// behind them.
+    /// Each has a capability that holds, an epic that serves it and a work log
+    /// row; those in the implementation column have a budget their work has spent
+    /// and a pass behind them.
     /// </summary>
     private static async Task SeedAsync(string connectionString, int ambitions)
     {
@@ -107,6 +107,11 @@ public class AmbitionsReadCostTests
             await db.SaveChangesAsync();
 
             db.CapabilityLinks.Add(new EfHatchCapabilityLink { CapabilityId = capability.Id, IssueId = epic.Id, Actor = "operator", At = Now });
+            db.CapabilityVerdicts.Add(new EfHatchCapabilityVerdict
+            {
+                CapabilityId = capability.Id, Verdict = EfHatchCapabilityVerdict.Holds, LookedAt = "the page",
+                Sha = "abc1234", Author = "runner", CreatedAt = Now,
+            });
             db.WorkLog.Add(new EfHatchWorkLogEntry
             {
                 IssueId = ambition.Id, SessionId = $"s-{n}", IssueType = "ambition", Outcome = ClaimOutcomes.Worked,

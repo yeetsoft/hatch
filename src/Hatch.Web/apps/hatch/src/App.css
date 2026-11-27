@@ -6109,21 +6109,40 @@ input.hatch-inline-title-input {
   min-width: 0;
 }
 
-/* What is waiting on the reader, above the rows: a card like a row, one line
-   per hold question, each a link to the ballot. The lines sit on four
-   columns - ambition, key, question, wait - so two lines read as a table; a
-   subgrid on the list and on each line keeps the columns aligned. The card
-   rule is prefixed as .hatch-ambition-row's is, for the same reason: the
-   board's tile also wears .hatch-card and a bare class would only tie with
-   it. */
-.hatch-page > .hatch-ambition-strip {
-  padding: var(--sp-4);
-  background: var(--card);
-  cursor: default;
+/* The two tiles above the rows: what is waiting on the reader, and how many
+   capabilities hold. Each is the board's own tile, so the card, the label and
+   the large line are .hatch-health-tile's, .hatch-health-label's and
+   .hatch-health-value's; only the line under the large line and the link are
+   new. Two columns on a desk, one on a phone. The grid takes no margin
+   shorthand: .hatch-page > * centres every child with auto side margins, and a
+   shorthand here would undo that.
+
+   The first tile also holds one line per hold question, each a link to the
+   ballot. The lines sit on four columns - ambition, key, question, wait - so
+   two lines read as a table; a subgrid on the list and on each line keeps the
+   columns aligned. */
+.hatch-ambition-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
 }
 
-.hatch-page > .hatch-ambition-strip:hover {
-  border-color: var(--line);
+.hatch-ambition-tile {
+  gap: var(--sp-1);
+}
+
+.hatch-ambition-tile-note {
+  margin: 0;
+  font-size: var(--t-label);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.hatch-ambition-tile-link {
+  align-self: flex-start;
+  margin-top: var(--sp-2);
+  color: var(--primary);
+  text-decoration: underline;
 }
 
 .hatch-ambition-strip-lines {
@@ -6175,6 +6194,16 @@ input.hatch-inline-title-input {
     display: flex;
     grid-column: auto;
     flex: 1 0 100%;
+  }
+
+  .hatch-ambition-tiles {
+    grid-template-columns: 1fr;
+  }
+
+  .hatch-ambition-tile-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 
   .hatch-ambition-strip-lines {

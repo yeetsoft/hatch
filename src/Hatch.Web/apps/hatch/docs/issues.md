@@ -362,16 +362,36 @@ sentence and the words stay. The dialog offers no dreams. The press files into
 the column where a session shapes the ambition, which the New issue dialog does
 not, and it is not drawn for a key: shaping is a person's press.
 
-Above the rows is a strip of what is waiting on the reader: one line for
-every question at the hold level anywhere on an ambition's tree, the
-ambition itself included. The strip is a card, like a row below it, with
-the same heading style as every other card in the app. A line names the
+Above the rows are two tiles, side by side on a desk and one above the
+other on a phone. They are the board's own tiles: the same card, the same
+small heading and the same large line. Together they start and end where the
+rows do. With no ambition in the tab's scope, neither is drawn.
+
+The first tile, **Waiting on you**, is what waits on the reader. Its large
+line counts the questions at the hold level anywhere on an ambition's tree,
+the ambition itself included: "3 decisions", or "1 decision". Under it, a
+sentence says how many open issues those questions hold and how long the
+oldest has waited: "Holding 4 open issues. The oldest has waited 9 hours."
+An issue held by two questions counts once, and so does a story beneath an
+epic whose own question already holds it. Under a minute it reads "The
+oldest was just asked." Then comes one line for every question: the
 ambition, the key of the issue the question is on, the first words of the
-question, and how long it has waited; the whole line links to the Ballot,
-under the tab's scope. The four sit on four columns, so two lines read as
-a table. With none waiting, the strip is one sentence: "Nothing is waiting
-on you." Where the read behind the strip fails, the strip says so in a
-sentence of its own and the rows beneath it still draw.
+question, and how long it has waited. The four sit on four columns, so two
+lines read as a table; the whole line links to the Ballot, under the tab's
+scope, and so does the **Open the ballot** link below them. With none
+waiting, the tile is one sentence, "Nothing is waiting on you.", with no
+large line and no link. Where the read behind the tile fails, the tile says
+so in a sentence of its own, and the second tile and the rows still draw.
+
+The second tile, **Capabilities that hold**, counts them: "N of M" is the
+capabilities whose newest verdict holds, over every capability of every
+ambition in the tab's scope. An ambition in a finished or a shelved column
+is left out of both numbers, so a closed ambition does not read as parts done
+for good; a scope holding only such ambitions reads "0 of 0". Under it, "2
+more in flight. 1 newly holding this week." counts the capabilities not yet
+holding that an open epic is working on, and those that hold now whose unbroken run of holds began in the
+last seven days. A "does not hold" or "cannot tell" verdict between two
+"holds" ends the run, so the later one starts it again.
 
 A row is the ambition's title, linking to the ambition's own page, its
 project key and its stage as a pill, and under them one sentence saying what
@@ -393,8 +413,8 @@ on three columns set once for the whole list, so the head, the capabilities
 and the epics start at the same place on every row, with their first lines
 level; in the epics, the column and the capability numbers also line up from
 one epic to the next. On a phone the three parts of a row, and
-the words of a strip line, stack one above the other instead of running side
-by side.
+the words of a line in the first tile, stack one above the other instead of
+running side by side.
 
 ### Stages
 
@@ -453,8 +473,8 @@ three things is true of it: a question at the hold level is open on it or on
 an ancestor, the ambition itself included; it is flagged dangerous and some
 question, at any level, is open on it or an ancestor; or it is itself held.
 A question on a story beneath the epic does not make the epic wait - other
-work under it can still move - though that question still shows in the strip
-above the rows. A column with no playbook is not read as waiting on a person
+work under it can still move - though that question still shows in the
+**Waiting on you** tile above the rows. A column with no playbook is not read as waiting on a person
 here; [the queue](watching-the-loop) is where that is said.
 
 For example, an ambition with four capabilities and two open epics might
