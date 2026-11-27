@@ -6,7 +6,8 @@ import { resolveDefaultProject, readRememberedProject, writeRememberedProject } 
 import { appendBlock } from '../lib/descriptionImage';
 import { message } from '../lib/errors';
 import { onePrToFile } from '../lib/onePr';
-import { parentCandidates, parentEmptyMessage, parentHint } from '../lib/parents';
+import { parentCandidates, parentEmptyMessage, parentHint, parentInForce, parentLookupFilter } from '../lib/parents';
+import type { PickedRow } from '../lib/pickerLookup';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { AttachmentDropZone } from './AttachmentDropZone';
 import { AttachmentList } from './AttachmentList';
@@ -107,7 +108,7 @@ export function NewIssueDialog({
   const [onePr, setOnePr] = useState<OnePrSetting>('inherit');
   const [priority, setPriority] = useState<Priority>('normal');
   const [preApproval, setPreApproval] = useState<PreApproval>('none');
-  const [parentKey, setParentKey] = useState<string | null>(null);
+  const [parentPick, setParentPick] = useState<PickedRow | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [readyAt, setReadyAt] = useState('');
@@ -121,10 +122,13 @@ export function NewIssueDialog({
 
   // The pick is kept as chosen and clamped on the way out, as ChildComposer
   // does its type: a project or type the pick is no candidate for reads
-  // `— none —` and files none, and switching back shows it again. No effect.
+  // `— none —` and files none, and switching back shows it again - now via
+  // parentInForce, over a pick that may be a lookup's row rather than a card
+  // in `parents`. No effect.
   const projectKey = projects.find((p) => p.id === chosen)?.key;
   const parents = projectKey ? parentCandidates(candidates, projectKey, type) : [];
-  const parent = parentKey && parents.some((c) => c.key === parentKey) ? parentKey : null;
+  const picked = parentInForce(parentPick, projectKey, type);
+  const parent = picked?.key ?? null;
   const keyPreview = projectKey ? `${projectKey}-…` : null;
   const canApprove = projects.find((p) => p.id === chosen)?.canApprove ?? false;
   const enforced = projects.find((p) => p.id === chosen)?.onePullRequestPolicy === 'enforced';
@@ -165,7 +169,7 @@ export function NewIssueDialog({
       confirm(created);
       if (projectKey) writeRememberedProject(projectKey);
       setProjectId(null);
-      setParentKey(null);
+      setParentPick(null);
       setOnePr('inherit');
       setPriority('normal');
       setPreApproval('none');
@@ -266,10 +270,12 @@ export function NewIssueDialog({
                   <IssuePicker
                     label="Parent"
                     value={parent}
+                    valueRow={picked}
                     candidates={parents}
                     emptyMessage={parentEmptyMessage(projectKey, type)}
                     homeProject={projectKey}
-                    onChange={async (key) => setParentKey(key || null)}
+                    lookup={projectKey ? { projectIds: [], accept: parentLookupFilter(type) } : undefined}
+                    onChange={async (_key, row) => setParentPick(row)}
                   />
                 </Field>
               )}

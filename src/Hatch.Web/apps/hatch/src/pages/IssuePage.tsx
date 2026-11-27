@@ -81,7 +81,7 @@ import { assigneeHint } from '../lib/assignee';
 import { onePrSaid } from '../lib/onePr';
 import { releaseFailureWords } from '../lib/runners';
 import { childTypes } from '../lib/childTypes';
-import { parentCandidates, parentEmptyMessage, parentHint } from '../lib/parents';
+import { parentCandidates, parentEmptyMessage, parentHint, parentLookupFilter } from '../lib/parents';
 import { repoSourcedOverrideHint, shortSha } from '../lib/playbookFiles';
 import { capabilityStateLabel, capabilityStateTone } from '../lib/capabilities';
 import { submitOmission } from '../lib/runnerOmissions';
@@ -104,7 +104,7 @@ import {
 } from '../lib/latestChange';
 import { implementation, isObviated, isSettled, tileFill } from '../lib/columns';
 import { dependencyCandidates, dependencyLookupFilter } from '../lib/dependencies';
-import { filedFromCandidates } from '../lib/filedFrom';
+import { filedFromCandidates, filedFromLookupFilter } from '../lib/filedFrom';
 import { deleteQuestion } from '../lib/deletion';
 import { firstLine } from '../lib/dreams';
 import { describe } from '../lib/events';
@@ -939,9 +939,11 @@ export function IssuePage() {
 
   const project = projectsByKey.get(issue.projectKey) ?? null;
 
-  // The legal parents: same project, a type this issue may hang under, and
-  // never itself - see lib/parents.ts. The server decides too - this only keeps
-  // the picker from offering something it will refuse.
+  // The legal parents off the board: any project, a type this issue may hang
+  // under, and never itself - see lib/parents.ts. The server decides too -
+  // this only keeps the picker from offering something it will refuse. A
+  // legal parent closed before the board read it is not among these, and
+  // reaches the picker only through its own lookup, below.
   const parents = parentCandidates(board.issues, issue.projectKey, issue.type, issue.key);
 
   // What may be filed under this issue, read off the same table the server
@@ -1110,6 +1112,7 @@ export function IssuePage() {
                 candidates={parents}
                 emptyMessage={parentEmptyMessage(issue.projectKey, issue.type)}
                 homeProject={issue.projectKey}
+                lookup={{ projectIds: [], accept: parentLookupFilter(issue.type, issue.key) }}
                 onChange={(parentKey) => save({ parentKey })}
               />
             </Field>
@@ -1127,7 +1130,8 @@ export function IssuePage() {
               label="Filed from"
               value={issue.filedFromKey ?? null}
               candidates={filedFromCandidates(board.issues, issue.key)}
-              emptyMessage="Nothing else is on the board yet."
+              emptyMessage="Type a key, a number or title words to find an issue."
+              lookup={{ projectIds: [], accept: filedFromLookupFilter(issue.key) }}
               onChange={(filedFromKey) => save({ filedFromKey })}
             />
           </Field>

@@ -499,7 +499,10 @@ another project. The one exception is a task under a story or bug that shares
 project, since one pull request is one branch in one repository, and the
 refusal names the story. The web picker - the issue page's Details card and
 the New issue dialog - lists candidates from every project you can see, the
-issue's own project first. Moving an issue to another project carries only the
+issue's own project first. Both Parent pickers also ask the server for what is
+typed, after a short pause, and list any issue of a legal type by key, number
+or title words, closed ones included, below the board's own - the dialog asks
+once a project is chosen. Moving an issue to another project carries only the
 children that are in its own project, and the parent stays: the moved issue
 keeps its own parent, and a child in another project, or one left behind with
 `moveDescendants: false`, stays where it is and keeps its link to the moved
@@ -529,7 +532,8 @@ from the issue the question was on.
 The field sits on the issue page too, in the Details card's edit view, right
 after Parent. What it holds is read on the same page in its own section,
 alongside the issues filed from this one — omitted when there is neither a
-source nor anything filed.
+source nor anything filed. Its picker does the same lookup Parent's does, and
+offers any issue but this one, closed ones included.
 
 **Plan** draws its own meter from this same rollup, one row per epic in the
 house. An epic under an epic of another project is drawn inside it, with its

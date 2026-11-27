@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { filedFromCandidates } from './filedFrom';
+import { filedFromCandidates, filedFromLookupFilter } from './filedFrom';
 import { ISSUE_TYPES } from '../types';
+import type { PickedRow } from './pickerLookup';
 import type { IssueCard } from '../types';
 
 /* Spread onto rather than written whole, so a new field on IssueCard is one
@@ -74,5 +75,23 @@ describe('filedFromCandidates', () => {
     expect(keys(filedFromCandidates(reversed, board[0].key))).toEqual(
       keys(reversed.filter((c) => c.key !== board[0].key)),
     );
+  });
+});
+
+describe('filedFromLookupFilter', () => {
+  const row = (over: Partial<PickedRow> = {}): PickedRow => ({ key: 'HATCH-99', title: 'A found row', type: 'epic', ...over });
+
+  it('refuses self', () => {
+    expect(filedFromLookupFilter('HATCH-99')(row())).toBe(false);
+  });
+
+  it('accepts every other type', () => {
+    for (const type of ISSUE_TYPES) {
+      expect(filedFromLookupFilter('HATCH-99')(row({ key: 'HATCH-1', type }))).toBe(true);
+    }
+  });
+
+  it('accepts every other project', () => {
+    expect(filedFromLookupFilter('HATCH-99')(row({ key: 'OTHER-1' }))).toBe(true);
   });
 });
