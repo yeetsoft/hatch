@@ -39,7 +39,7 @@ import {
 import { StatusDot } from './StatusPill';
 import { boardColumns } from '../lib/columns';
 import { SEARCH_ROW, entryKeys, goToStatus, whereOnBoard } from '../lib/goTo';
-import type { GoToLoad, Mark } from '../lib/goTo';
+import type { Mark } from '../lib/goTo';
 import { listEntries, mergeAnswer, scopeToken } from '../lib/goToKeys';
 import type { GoToListing } from '../lib/goToKeys';
 import { useGoTo } from '../lib/useGoTo';
@@ -81,8 +81,6 @@ export interface OmniBarProps {
   allProjects: Project[];
   /** The scope as project ids, for the one request the console makes. */
   scopeIds: number[];
-  /** Whether `cards` has landed. */
-  load: GoToLoad;
   /** A row was taken. The console does not give focus back: whoever took it is
       about to put it somewhere. */
   onTake: (card: IssueCard) => void;
@@ -146,7 +144,6 @@ export function OmniBar({
   projects,
   allProjects,
   scopeIds,
-  load,
   onTake,
   onTakeKey,
   onSearch,
@@ -424,8 +421,7 @@ export function OmniBar({
         ? (activeCommand?.disabled ?? commandStatus(found.rows.length, found.total))
         : mode === 'help'
           ? PREFIXES.map((row) => `${row.prefix} ${row.mode === 'help' ? 'this list' : row.mode}`).join(' · ')
-          : // Keys listed from numbers are real whether or not the board has been read.
-            goToStatus(asked, entries.length, total, entries.length > 0 ? 'ready' : load, { more, pending }));
+          : goToStatus(asked, entries.length, total, { more, pending }));
   const rowKey = (key: string) => (key === SEARCH_ROW ? searchRowId : rowId(key));
 
   return (
