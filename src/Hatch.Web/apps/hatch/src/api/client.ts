@@ -5,6 +5,7 @@ import type {
   ActivityPage,
   ActivityReport,
   AmbitionChange,
+  AmbitionChanges,
   AmbitionPass,
   ChangeDecisionRequest,
   ChangeOutcome,
@@ -63,6 +64,7 @@ import type {
   Plan,
   Person,
   PersonSession,
+  PersonVisit,
   ChatChannel,
   ChatManifest,
   ChatRoom,
@@ -694,6 +696,17 @@ export const getAmbitions = (projectId?: number | number[]) => {
   return fetchJson<AmbitionRow[]>(`/api/ambitions${qs ? `?${qs}` : ''}`);
 };
 
+/** What changed under those ambitions since an instant. `projectId` narrows as
+    `getAmbitions`'s does. `since` left out, the server reads from the person's
+    last visit, or seven days back where there is none. */
+export const getAmbitionChanges = (projectId?: number | number[], since?: string) => {
+  const params = new URLSearchParams();
+  for (const id of ([] as number[]).concat(projectId ?? [])) params.append('projectId', String(id));
+  if (since !== undefined) params.set('since', since);
+  const qs = params.toString();
+  return fetchJson<AmbitionChanges>(`/api/ambitions/changes${qs ? `?${qs}` : ''}`);
+};
+
 /** One ambition's own row - its stage, its capability bar and its limit - the
     same one its line on the Ambitions page shows, or null for a key that
     does not parse, names no ambition, or names an issue that is not one. */
@@ -1232,6 +1245,9 @@ export interface WorkLogByPlaybookQuery {
 /** A person's own home screen; a key is refused. Answers the fresh `/api/me`. */
 export const putMyHome = (home: 'board' | 'ambitions') =>
   fetchJson<Me>('/api/me/home', { method: 'PUT', ...asJson({ home }) });
+
+/** Records that the person opened the Ambitions page just now; a key is refused. */
+export const putAmbitionsVisit = () => fetchJson<PersonVisit>('/api/me/visits/ambitions', { method: 'PUT' });
 
 /**
  * The caller's own Slack links; person-only, a key is refused. The secret of a

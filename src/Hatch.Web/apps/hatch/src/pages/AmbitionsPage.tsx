@@ -1,11 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card, EmptyState, PageHeader } from '@hatch/ui';
-import { getAmbitions, getBallot, getStatuses } from '../api/client';
+import { getAmbitionChanges, getAmbitions, getBallot, getStatuses, putAmbitionsVisit } from '../api/client';
+import { AmbitionChangesSection } from '../components/AmbitionChanges';
 import { CapabilityBar, StagePill, stageWord } from '../components/AmbitionHeader';
 import { NewAmbitionDialog } from '../components/NewAmbitionDialog';
 import { ScopeGate } from '../components/ScopeGate';
 import { StatusPill } from '../components/StatusPill';
+import { holdFirstRead, shouldRecord, shownBasis, sinceToSend, type HeldVisit } from '../lib/ambitionVisit';
 import { waitedWords } from '../lib/attention';
 import { firstLine } from '../lib/dreams';
 import { rowBudgetLine } from '../lib/budget';
@@ -14,17 +16,19 @@ import { scopedPath } from '../lib/scope';
 import { useLoaded } from '../lib/useLoaded';
 import { useMe } from '../lib/useMe';
 import { useScope } from '../lib/useScope';
-import type { AmbitionRow, AmbitionStage, Ballot, BallotNode, Question, Status } from '../types';
+import type { AmbitionChanges, AmbitionRow, AmbitionStage, Ballot, BallotNode, Question, Status } from '../types';
 
 /** The reads this page is made of, arriving together so a pill is never drawn
-    without the colour of its column. The ballot is the exception in what it
-    does on failure: it is one strip on the page, so its failure is carried
-    here as a sentence and never rejects the rest. */
+    without the colour of its column. The ballot and what changed are the
+    exceptions in what they do on failure: each is one part of the page, so its
+    failure is carried here as a sentence and never rejects the rest. */
 export interface AmbitionsView {
   ambitions: AmbitionRow[];
   statuses: Status[];
   ballot: Ballot | null;
   ballotError: string | null;
+  changes: AmbitionChanges | null;
+  changesError: string | null;
   /** The scope this was fetched under, in the form `scopeKey` below takes. */
   scopeKey: string;
 }
@@ -49,6 +53,10 @@ function AmbitionsContent() {
   const scope = useScope();
   const { me } = useMe();
   const [shaping, setShaping] = useState(false);
+  /* What the first drawn read ran from, and whether this mount has recorded its
+     visit: see lib/ambitionVisit. */
+  const heldRef = useRef<HeldVisit | null>(null);
+  const recordedRef = useRef(false);
 
   /* The scope in force, as one string: `scope.ids` is empty until the
      provider's own project list lands, so a read made before that was made
@@ -56,17 +64,30 @@ function AmbitionsContent() {
   const scopeKey = scope.isScoped ? scope.keys.join(',') : '';
 
   const load = useCallback(async (): Promise<AmbitionsView> => {
-    /* Handlers are attached at the call, so a ballot that fails is caught here
-       and handed to the strip rather than blanking the rows. */
-    const [ambitions, statuses, read] = await Promise.all([
+    /* Handlers are attached at the call, so a ballot or a read of what changed
+       that fails is caught here and handed to its own part of the page rather
+       than blanking the rows. */
+    const [ambitions, statuses, read, changed] = await Promise.all([
       getAmbitions(scope.isScoped ? scope.ids : undefined),
       getStatuses(),
       getBallot(scope.isScoped ? scope.ids : undefined).then(
         (b) => ({ ballot: b, failure: null as string | null }),
         (err: unknown) => ({ ballot: null, failure: message(err) }),
       ),
+      getAmbitionChanges(scope.isScoped ? scope.ids : undefined, sinceToSend(heldRef.current)).then(
+        (c) => ({ changes: { ...c, basis: shownBasis(heldRef.current, c) }, failure: null as string | null }),
+        (err: unknown) => ({ changes: null, failure: message(err) }),
+      ),
     ]);
-    return { ambitions, statuses, ballot: read.ballot, ballotError: read.failure, scopeKey };
+    return {
+      ambitions,
+      statuses,
+      ballot: read.ballot,
+      ballotError: read.failure,
+      changes: changed.changes,
+      changesError: changed.failure,
+      scopeKey,
+    };
   }, [scope.isScoped, scope.ids, scopeKey]);
 
   const { data, error } = useLoaded<AmbitionsView>(load);
@@ -74,6 +95,17 @@ function AmbitionsContent() {
   /* Only a read made for the scope now in force is drawn: until the refetch the
      provider's late list triggers resolves, `data` is the unscoped one. */
   const current = data !== null && scope.loaded && data.scopeKey === scopeKey;
+
+  /* Opening the page is looking at it, so the visit is recorded once what
+     changed has been drawn. A write that fails changes nothing on screen: the
+     next visit reads from the earlier one. */
+  useEffect(() => {
+    const changes = data?.changes ?? null;
+    if (!changes || !shouldRecord({ current, changes, recorded: recordedRef.current })) return;
+    recordedRef.current = true;
+    heldRef.current = holdFirstRead(heldRef.current, changes);
+    putAmbitionsVisit().catch(() => {});
+  }, [current, data]);
 
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data || !current) return <p className="text-muted">Loading…</p>;
@@ -97,7 +129,7 @@ function AmbitionsContent() {
   );
 }
 
-/** The page under its gate: the header, the two tiles, then the rows. Apart from the loading so a test can draw it from props. */
+/** The page under its gate: the header, the two tiles, the rows, then what changed. Apart from the loading so a test can draw it from props. */
 export function AmbitionsBody({
   data,
   scopeKeys,
@@ -125,6 +157,10 @@ export function AmbitionsBody({
       <AmbitionTiles data={data} scopeKeys={scopeKeys} now={now} />
 
       <AmbitionList ambitions={data.ambitions} statuses={data.statuses} scopeKeys={scopeKeys} onNew={onNew} />
+
+      {data.ambitions.length > 0 && (
+        <AmbitionChangesSection changes={data.changes} error={data.changesError} scopeKeys={scopeKeys} now={now} />
+      )}
     </div>
   );
 }
