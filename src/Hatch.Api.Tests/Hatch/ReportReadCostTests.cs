@@ -186,20 +186,20 @@ public class ReportReadCostTests
         // report is meant to keep equal. Two loads of Issues: the report's rows and the trail's probe.
         ["GET /api/reports/flow"] = (
             new(10, 2, 1233, 833, "Comments=561;IssueEvents=704;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=500"),
-            new(10, 2, 1233, 833, "Comments=241;IssueEvents=704;Issues=1400;Projects=2;Statuses=6;WorkLogEntries=300")),
+            new(10, 2, 1233, 833, "Comments=241;IssueEvents=704;Issues=1200;Projects=2;Statuses=6;WorkLogEntries=300")),
         // The cards' read of waiting questions, with no range (HA-2816): the card load goes through the
         // priority tree to Questions.WaitingLevelsAsync, and the changelog's rollup reads
         // Questions.WaitingCountsAsync, which both join Comments to Issues and Statuses. The changelog does
         // not read QuestionTrail.
         ["GET /api/reports/changelog (epic level)"] = (
-            new(13, 5, 417, 12, "Comments=720;Issues=1024;Projects=3;Statuses=36"),
-            new(13, 5, 417, 12, "Comments=1561;Issues=1223;Projects=3;Statuses=36")),
+            new(13, 5, 417, 12, "Comments=720;Issues=826;Projects=3;Statuses=36"),
+            new(13, 5, 417, 12, "Comments=1561;Issues=1025;Projects=3;Statuses=36")),
         ["GET /api/reports/changelog (story level)"] = (
-            new(15, 7, 621, 12, "Comments=720;Issues=1244;Projects=3;Statuses=42"),
-            new(15, 7, 621, 12, "Comments=1561;Issues=1443;Projects=3;Statuses=42")),
+            new(15, 7, 621, 12, "Comments=720;Issues=1047;Projects=3;Statuses=42"),
+            new(15, 7, 621, 12, "Comments=1561;Issues=1246;Projects=3;Statuses=42")),
         ["GET /api/reports/changelog (loose=true)"] = (
-            new(15, 7, 421, 12, "Comments=720;Issues=1251;Projects=4;Statuses=42"),
-            new(15, 7, 421, 12, "Comments=1561;Issues=1450;Projects=4;Statuses=42")),
+            new(15, 7, 421, 12, "Comments=720;Issues=855;Projects=4;Statuses=42"),
+            new(15, 7, 421, 12, "Comments=1561;Issues=1054;Projects=4;Statuses=42")),
         // The actor's events in the range, and the first event for the start clamp, read off the index as
         // one row (HA-2817): IssueEvents is no longer what grows, and the large board reads fewer of it.
         // It stays here for the cards, which read Comments and Issues through the same waiting-question
@@ -224,10 +224,10 @@ public class ReportReadCostTests
         // change without a new index or a change to what the attention panel answers.
         ["GET /api/board/health"] = (
             new(57, 14, 5094, 2641, "Comments=1782;IssueEvents=2755;Issues=4802;LegacyRunners=3;Projects=14;RunnerStates=27;Statuses=30"),
-            new(57, 14, 5094, 2641, "Comments=1923;IssueEvents=2607;Issues=5402;LegacyRunners=3;Projects=14;RunnerStates=3;Statuses=30")),
+            new(57, 14, 5094, 2641, "Comments=1923;IssueEvents=2607;Issues=5202;LegacyRunners=3;Projects=14;RunnerStates=3;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(61, 15, 5055, 2591, "Comments=1782;IssueEvents=2799;Issues=5204;LegacyRunners=3;Projects=20;RunnerStates=27;Statuses=30"),
-            new(61, 15, 5055, 2591, "Comments=1923;IssueEvents=2651;Issues=5804;LegacyRunners=3;Projects=20;RunnerStates=3;Statuses=30")),
+            new(61, 15, 5055, 2591, "Comments=1782;IssueEvents=2799;Issues=4831;LegacyRunners=3;Projects=20;RunnerStates=27;Statuses=30"),
+            new(61, 15, 5055, 2591, "Comments=1923;IssueEvents=2651;Issues=5431;LegacyRunners=3;Projects=20;RunnerStates=3;Statuses=30")),
     };
 
     private sealed record Read(string Name, Func<Harness, Task> Call);
