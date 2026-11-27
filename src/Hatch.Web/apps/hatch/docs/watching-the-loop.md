@@ -354,17 +354,20 @@ runner" sentence and exits 1.
 **Agents → Leaderboard** is every session's work-log row, board-wide unless
 scoped. Pick a range - **Last 24 hours**, **Today**, **Last 7 days**, **Last
 14 days** (the default), **Last 30 days**, or a pasted window - and narrow it
-to one issue and everything beneath it. Below the controls sit a
-spend-over-time graph, a **Top billing** list of the costliest sessions in the
-window, and a table of every session in it, sortable by tokens, requests,
-peak context, notional USD or when it ran. The table's last column is
-**Outcome**: the word a release gave, or a dash for a row from before the
-field existed - hovering a dropped row's cell names the reason, in words
-(a quiet limit, a run-time limit, an error, or plainly that the increment
-moved nothing). Nothing on this page writes - there is no control that could,
-and the server refuses a browser outright. Under a scoped tab the graph, the
-list and the table all cover only sessions run against issues of the projects
-in scope, and the issue filter offers only those issues.
+to one issue and everything beneath it. Typing a key, a number or title
+words asks the server for a match too, after a short pause, so the filter
+also finds an issue closed long before the board's own done horizon. Below
+the controls sit a spend-over-time graph, a **Top billing** list of the
+costliest sessions in the window, and a table of every session in it,
+sortable by tokens, requests, peak context, notional USD or when it ran. The
+table's last column is **Outcome**: the word a release gave, or a dash for a
+row from before the field existed - hovering a dropped row's cell names the
+reason, in words (a quiet limit, a run-time limit, an error, or plainly that
+the increment moved nothing). Nothing on this page writes - there is no
+control that could, and the server refuses a browser outright. Under a
+scoped tab the graph, the list and the table all cover only sessions run
+against issues of the projects in scope, and the issue filter - including
+what it looks up - offers only those issues.
 [What a session is told](what-a-session-is-told#the-work-log-block) says what
 goes into one of these rows in the first place.
 
