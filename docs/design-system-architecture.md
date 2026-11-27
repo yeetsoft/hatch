@@ -259,6 +259,13 @@ not the query that decides which rules apply. `viewport.ts` and the CSS are
 the two places it is written, and they are kept identical by hand, the same
 way the dark palette above is kept in sync by hand across its two blocks.
 
+Just above it the top bar does not hide the nav: between `40rem` and about
+1150px (with the scope control drawn and the battery showing; about 1050px at
+rest) the nav, the scope control and the trailing controls do not fit one row,
+so the bar wraps - the trailing controls drop to a second row at the right
+rather than being painted over by the nav. It wraps on the widths as they are,
+not on a second breakpoint (`TopBar.css`, measured by `BarFitsDeskTests`).
+
 Layout follows width — this breakpoint. Touch behaviour follows a different
 axis, `(pointer: coarse)`, already read in
 [`MarkdownEditor.tsx`](../src/Hatch.Web/apps/hatch/src/components/MarkdownEditor.tsx).
