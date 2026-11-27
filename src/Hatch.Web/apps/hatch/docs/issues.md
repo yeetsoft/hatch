@@ -69,6 +69,22 @@ its capabilities; unlink it first. Each change shows on the epic's History as
 "serves changed". Deleting the epic or the capability removes the link and
 nothing else.
 
+An ambition's own page opens with a line reading "Ambitions / " and its
+title, where "Ambitions" links back to [the Ambitions page](#the-ambitions-page)
+under the tab's own scope - the one way back to it from an ambition's own
+page. Under that, right after Details, is a header card: the stage as a pill
+and the sentence under it, the capability bar and its legend, and a row of
+facts - the project, **Epics at once** (editable right there, the same field
+Details' edit form and read view show under that name for an ambition), how
+many passes have run, and the pre-approval level. The stage, the sentence,
+the bar and the limit are read narrowed to this one key
+(`GET /ambitions?key=`, see [the Ambitions page](#the-ambitions-page)), so
+this card and the ambition's row there can never disagree about where it
+stands. An ambition's own words - its Description, where "Principles" and
+"Out of scope" are headings rather than cards of their own - come straight
+after the header card and before Capabilities; no other type moves its
+Description. Every other section below keeps the order it always has.
+
 Both show on the issue page. An ambition's page draws a Capabilities
 section above Progress: one row per capability, in order, with its statement and
 how to tell, its state as one of "Holds", "Does not hold", "Cannot tell" or "Not
@@ -415,6 +431,12 @@ level; in the epics, the column and the capability numbers also line up from
 one epic to the next. On a phone the three parts of a row, and
 the words of a line in the first tile, stack one above the other instead of
 running side by side.
+
+An ambition's own page draws the same stage pill and sentence, and the same
+capability bar and legend, in the header card right after Details - narrowed
+to that one key (`GET /ambitions?key=`), so a row here and that card can
+never disagree about where the ambition stands. See
+[the issue page](#capabilities) above.
 
 ### Stages
 

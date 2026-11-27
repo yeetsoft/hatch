@@ -6001,6 +6001,41 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
+/* The crumb an ambition's own page opens with, and the header card right
+   after Details: the same stage pill, sentence, bar and legend the
+   Ambitions row draws, plus a row of facts. */
+.hatch-ambition-crumb {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.hatch-ambition-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.hatch-ambition-header-stage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hatch-ambition-header-facts {
+  display: flex;
+  gap: var(--sp-5);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 40rem) {
+  .hatch-ambition-header-facts {
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+}
+
 /* The stage, as a soft pill: money spent or work stopped in the warning fill,
    work under way or finished well in the success fill, and the rest muted. The
    word carries the meaning; the colour decorates it. */

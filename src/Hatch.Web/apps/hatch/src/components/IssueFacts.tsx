@@ -8,6 +8,7 @@ import { localModelFact } from '../lib/localModel';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { omissionsFact } from '../lib/runnerOmissions';
 import { runnerTagsSentence } from '../lib/runnerTags';
+import { wipLimitLabel } from '../lib/wip';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
 import { TypeBadge } from './TypeBadge';
@@ -127,7 +128,7 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
       )}
 
       {RUNS_CHILDREN.includes(issue.type) && (
-        <Field label="Stories at once" as="div">
+        <Field label={wipLimitLabel(issue.type)} as="div">
           {wipLimitFact(issue.wipLimit)}
         </Field>
       )}

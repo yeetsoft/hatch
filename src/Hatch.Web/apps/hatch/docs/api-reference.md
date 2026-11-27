@@ -747,7 +747,7 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | GET | `/go-to` | The first issues a typed number, key, whole key or title words name, quickly at any size of board |
 | GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request; a tree may cross projects |
 | GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
-| GET | `/ambitions` | Every ambition with its stage, its capabilities counted four ways and the epics open under it, grouped by stage; takes a repeatable `projectId` |
+| GET | `/ambitions` | Every ambition with its stage, its capabilities counted four ways and the epics open under it, grouped by stage; takes a repeatable `projectId`, or narrows to one ambition's `key` |
 | GET | `/ambitions/changes` | What changed under the caller's ambitions since an instant: capabilities that now hold, epics carved, decisions made without a person, hold questions still open; takes `since` and a repeatable `projectId` |
 | GET | `/assignees` | Everybody an issue could belong to, plus who the caller is |
 
@@ -791,8 +791,12 @@ read: an issue the caller cannot see is never a row, out of scope or not. A
 `limit` outside 1-50 is a 400.
 
 `/ambitions` takes an optional, repeatable `projectId`, the same filter
-`/plan` takes, and answers one `AmbitionRowDto` per ambition the caller may
-see, grouped by stage - `budget spent`, `running`, `stopped`, `complete`,
+`/plan` takes, and an optional `key` narrowing the answer to the one ambition
+that display key names - a key that does not parse is a 400, and one that
+parses but names no ambition, or an issue that is not one, answers `[]`; an
+ambition's own page reads it this way, so the page and the Ambitions row
+agree about its stage without a second computation. Otherwise it answers one
+`AmbitionRowDto` per ambition the caller may see, grouped by stage - `budget spent`, `running`, `stopped`, `complete`,
 `ready`, `shaping`, `draft`, then `done` and `shelved` together - and inside a
 group in board order: column sort order, then rank, then id. Its fields are
 `Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Stage` (one of those

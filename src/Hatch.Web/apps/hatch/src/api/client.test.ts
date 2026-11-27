@@ -29,6 +29,7 @@ import {
   getAuthMe,
   getActivityReport,
   getChangelogReport,
+  getAmbitionRow,
   getAmbitions,
   getBallot,
   getBoardHealth,
@@ -726,6 +727,30 @@ describe('getAmbitions', () => {
 
   it('treats an empty list as none', async () => {
     expect(await urlOf([])).toBe('/api/ambitions');
+  });
+});
+
+describe('getAmbitionRow', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the key as a query string and returns the one row', async () => {
+    const row = { key: 'HA-12' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify([row]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getAmbitionRow('HA-12');
+
+    expect((fetchMock.mock.calls[0] as unknown[])[0]).toBe('/api/ambitions?key=HA-12');
+    expect(result).toEqual(row);
+  });
+
+  it('returns null for an empty answer', async () => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(await getAmbitionRow('HA-12')).toBeNull();
   });
 });
 

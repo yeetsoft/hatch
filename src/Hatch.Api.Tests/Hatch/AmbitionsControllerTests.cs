@@ -617,6 +617,57 @@ public class AmbitionsControllerTests
         Assert.Empty(Assert.Single(rows.Single(r => r.Key == h.Key(theirs)).Open).Serves);
     }
 
+    // ---- The key filter ----
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("doing")]
+    public async Task AKey_ReadsTheSameRowAsTheFullList(string? statusName)
+    {
+        var h = await NewAsync();
+        var statusId = statusName == "doing" ? h.Doing : (int?)null;
+        var ambition = await h.FileAsync("ambition", "a", statusId: statusId, wipLimit: 2);
+        var held = await h.CapabilityAsync(ambition, 1);
+        await h.VerdictAsync(held, EfHatchCapabilityVerdict.Holds);
+        await h.CapabilityAsync(ambition, 2);
+        await h.FileAsync("other", "noise");
+
+        var full = Assert.Single(await h.ReadAsync());
+        var byKey = Assert.Single(await h.ReadByKeyAsync(h.Key(ambition)));
+
+        Assert.Equal((full.Stage, full.StageWhy, full.Limit, full.Capabilities, full.Holds, full.InFlight, full.WaitsOnPerson, full.NotStarted),
+            (byKey.Stage, byKey.StageWhy, byKey.Limit, byKey.Capabilities, byKey.Holds, byKey.InFlight, byKey.WaitsOnPerson, byKey.NotStarted));
+    }
+
+    [Fact]
+    public async Task AnEpicsKey_GivesAnEmptyArray()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id);
+
+        Assert.Empty(await h.ReadByKeyAsync(h.Key(epic)));
+    }
+
+    [Fact]
+    public async Task AKeyNamingNoIssue_GivesAnEmptyArray()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("ambition", "a");
+
+        Assert.Empty(await h.ReadByKeyAsync("AER-999"));
+    }
+
+    [Fact]
+    public async Task AMalformedKey_Is400()
+    {
+        var h = await NewAsync();
+
+        var result = await h.ReadRawAsync("not-a-key");
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
     // ---- The harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 3, 1, 9, 0, 0, TimeSpan.Zero);
@@ -747,7 +798,13 @@ public class AmbitionsControllerTests
         }
 
         public async Task<AmbitionRowDto[]> ReadAsync(params int[] projectIds) =>
-            Value(await Ambitions.GetAmbitions(projectIds.Length == 0 ? null : projectIds.ToList(), default));
+            Value(await Ambitions.GetAmbitions(projectIds.Length == 0 ? null : projectIds.ToList(), null, default));
+
+        public async Task<AmbitionRowDto[]> ReadByKeyAsync(string key) =>
+            Value(await Ambitions.GetAmbitions(null, key, default));
+
+        public async Task<ActionResult<AmbitionRowDto[]>> ReadRawAsync(string? key) =>
+            await Ambitions.GetAmbitions(null, key, default);
 
         /// <summary>The key of an issue filed here, in whichever of the two projects it went to.</summary>
         public string Key(EfHatchIssue issue) =>
