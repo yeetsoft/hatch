@@ -13,6 +13,14 @@ const page = readFileSync(new URL('../pages/IssuePage.tsx', import.meta.url), 'u
 describe('IssuePage section order', () => {
   it('draws child issues above dependencies above the description', () => {
     expect(page.indexOf('<Progress')).toBeLessThan(page.indexOf('<Dependencies'));
-    expect(page.indexOf('<Dependencies')).toBeLessThan(page.indexOf('<Description'));
+    // lastIndexOf, not indexOf: an ambition's own <Description, gated
+    // `issue.type === 'ambition'`, sits above Capabilities and comes first in
+    // the file - this is every other type's, gated `issue.type !== 'ambition'`.
+    expect(page.indexOf('<Dependencies')).toBeLessThan(page.lastIndexOf('<Description'));
+  });
+
+  it('for an ambition, draws the header above its own Description above Capabilities', () => {
+    expect(page.indexOf('<AmbitionHeader')).toBeLessThan(page.indexOf('<Description'));
+    expect(page.indexOf('<Description')).toBeLessThan(page.indexOf('<Capabilities'));
   });
 });

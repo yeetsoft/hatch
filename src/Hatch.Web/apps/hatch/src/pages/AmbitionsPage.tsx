@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card, EmptyState, PageHeader } from '@hatch/ui';
 import { getAmbitions, getBallot, getStatuses } from '../api/client';
+import { CapabilityBar, StagePill, stageWord } from '../components/AmbitionHeader';
 import { NewAmbitionDialog } from '../components/NewAmbitionDialog';
 import { ScopeGate } from '../components/ScopeGate';
 import { StatusPill } from '../components/StatusPill';
@@ -276,11 +277,6 @@ export function CapabilitiesTile({ ambitions, statuses }: { ambitions: AmbitionR
 /** The stages whose ambitions are folded away at the foot of the list. */
 const FINISHED: readonly AmbitionStage[] = ['done', 'shelved'];
 
-/** A stage as it is drawn: `budget spent` reads "Budget spent". */
-function stageWord(stage: AmbitionStage): string {
-  return stage.charAt(0).toUpperCase() + stage.slice(1);
-}
-
 /** The primary press that opens the New ambition dialog. */
 function NewAmbitionButton({ onClick }: { onClick: () => void }) {
   return (
@@ -355,25 +351,11 @@ export function AmbitionList({
   );
 }
 
-/** An ambition's stage as a pill, where a row's own column pill would sit. */
-function StagePill({ stage }: { stage: AmbitionStage }) {
-  return <span className={`hatch-stage-pill hatch-stage-${stage.replace(/ /g, '-')}`}>{stageWord(stage)}</span>;
-}
-
 /** The column as a pill, or its name as muted text where the list lacks it. */
 function ColumnPill({ statusId, statusName, statuses }: { statusId: number; statusName: string; statuses: Status[] }) {
   const status = statuses.find((s) => s.id === statusId);
   return status ? <StatusPill status={status} size="sm" /> : <span className="text-muted">{statusName}</span>;
 }
-
-/** The four counts of a bar, in the order they are drawn, each with the words
-    the legend and the `aria-label` use. */
-const SEGMENTS = [
-  { count: (r: AmbitionRow) => r.holds, label: 'hold', cls: 'holds' },
-  { count: (r: AmbitionRow) => r.inFlight, label: 'in flight', cls: 'in-flight' },
-  { count: (r: AmbitionRow) => r.waitsOnPerson, label: 'waiting on a person', cls: 'waiting' },
-  { count: (r: AmbitionRow) => r.notStarted, label: 'not started', cls: 'not-started' },
-] as const;
 
 /** One ambition: its head with its stage, what it needs and what it is for, its
     capabilities as a bar, its open epics, and what is on the reader. */
@@ -386,8 +368,6 @@ export function AmbitionRowView({
   statuses: Status[];
   scopeKeys?: string[];
 }) {
-  const drawn = SEGMENTS.map((s) => ({ ...s, n: s.count(row) })).filter((s) => s.n > 0);
-
   return (
     <Card as="li" className="hatch-ambition-row">
       <div className="hatch-ambition-part">
@@ -406,31 +386,7 @@ export function AmbitionRowView({
         <h3 className="hatch-ambition-heading">
           {row.capabilities} {row.capabilities === 1 ? 'capability' : 'capabilities'}
         </h3>
-        {drawn.length === 0 ? (
-          <EmptyState message="This ambition has no capabilities yet." />
-        ) : (
-          <>
-            {/* Widths are the counts in proportion: flex-grow carries the count
-                and flex-basis is zero, so nothing is summed here. */}
-            <div
-              className="hatch-ambition-bar"
-              role="img"
-              aria-label={SEGMENTS.map((s) => `${s.count(row)} ${s.label}`).join(', ')}
-            >
-              {drawn.map((s) => (
-                <span key={s.cls} className={`hatch-ambition-segment hatch-ambition-${s.cls}`} style={{ flexGrow: s.n }} />
-              ))}
-            </div>
-            <ul className="hatch-ambition-legend">
-              {drawn.map((s) => (
-                <li key={s.cls}>
-                  <span className={`hatch-ambition-swatch hatch-ambition-${s.cls}`} aria-hidden="true" />
-                  {s.n} {s.label}
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+        <CapabilityBar row={row} />
       </div>
 
       <div className="hatch-ambition-part">

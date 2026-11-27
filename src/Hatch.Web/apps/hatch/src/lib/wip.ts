@@ -91,6 +91,26 @@ export function wipLimitRequest(draft: string): string {
   return draft.trim();
 }
 
+/** What the WIP-limit field is called for a type: an ambition runs epics,
+    everything else that has one (an epic, a reflection) runs stories. */
+export function wipLimitLabel(type: IssueType): string {
+  return type === 'ambition' ? 'Epics at once' : 'Stories at once';
+}
+
+/** What a blank WIP-limit field means for a type: an unset ambition runs one
+    epic at a time (the controller and PassFold both read it as `?? 1`); an
+    epic or a reflection runs with no limit at all. */
+export function wipLimitHint(type: IssueType): string {
+  return type === 'ambition' ? 'Blank means one at a time.' : 'Blank means no limit.';
+}
+
+/** The placeholder a blank WIP-limit field shows: an ambition's unset value
+    reads as 1, shown as a placeholder rather than drafted into the value -
+    typing nothing must still clear the field on the wire. */
+export function wipLimitPlaceholder(type: IssueType): string | undefined {
+  return type === 'ambition' ? '1' : undefined;
+}
+
 /** How a set of issue types reads in a sentence - `stories and bugs`, `epics`.
     Mirrors Hatch.Contracts.TypeWords.Plural. */
 export function plural(types: IssueType[]): string {

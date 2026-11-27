@@ -694,6 +694,14 @@ export const getAmbitions = (projectId?: number | number[]) => {
   return fetchJson<AmbitionRow[]>(`/api/ambitions${qs ? `?${qs}` : ''}`);
 };
 
+/** One ambition's own row - its stage, its capability bar and its limit - the
+    same one its line on the Ambitions page shows, or null for a key that
+    does not parse, names no ambition, or names an issue that is not one. */
+export const getAmbitionRow = async (key: string): Promise<AmbitionRow | null> => {
+  const rows = await fetchJson<AmbitionRow[]>(`/api/ambitions?key=${encodeURIComponent(key)}`);
+  return rows[0] ?? null;
+};
+
 // ---- Work ----
 
 /**

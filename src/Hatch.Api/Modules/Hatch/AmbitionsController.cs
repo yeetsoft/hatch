@@ -37,7 +37,13 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, ICalle
     /// <param name="projectId">
     /// Whose ambitions to list, or every project's when absent or empty;
     /// repeatable to name several, as <c>/api/plan</c> takes it. An id naming
-    /// no project contributes nothing.
+    /// no project contributes nothing. May be combined with <paramref name="key"/>.
+    /// </param>
+    /// <param name="key">
+    /// Narrows the list to one ambition's display key, such as <c>HA-12</c>. A
+    /// key that does not parse is a 400; one that parses but names no ambition,
+    /// or an issue that is not one, answers <c>[]</c>. Lets an ambition's own
+    /// page read the same stage, bar and limit the Ambitions page shows for it.
     /// </param>
     /// <remarks>
     /// A capability is counted once, in the first of these that is true: its
@@ -62,11 +68,22 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, ICalle
     /// ambitions.</para>
     /// </remarks>
     [HttpGet]
-    public async Task<ActionResult<AmbitionRowDto[]>> GetAmbitions([FromQuery] List<int>? projectId, CancellationToken ct)
+    public async Task<ActionResult<AmbitionRowDto[]>> GetAmbitions(
+        [FromQuery] List<int>? projectId, [FromQuery] string? key, CancellationToken ct)
     {
         var projectIds = (projectId ?? []).Distinct().ToList();
 
-        var ambitions = await InProject(db.Issues.AsNoTracking().Where(i => i.Type == Ambition), projectIds)
+        var ambitionsQuery = InProject(db.Issues.AsNoTracking().Where(i => i.Type == Ambition), projectIds);
+
+        if (key is not null)
+        {
+            if (!IssueKey.TryParse(key, out var keyProject, out var keyNumber))
+                return BadRequest($"key is not an issue key: {key}");
+
+            ambitionsQuery = ambitionsQuery.WithKey(keyProject, keyNumber);
+        }
+
+        var ambitions = await ambitionsQuery
             .OrderBy(i => i.Status!.SortOrder)
             .ThenBy(i => i.Rank)
             .ThenBy(i => i.Id)

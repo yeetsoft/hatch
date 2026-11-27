@@ -204,6 +204,11 @@ describe('IssueFacts', () => {
     expect(html).not.toContain('Omitted runners');
   });
 
+  it('labels the WIP field "Epics at once" for an ambition, and "Stories at once" for an epic', () => {
+    expect(render(issue({ type: 'ambition', wipLimit: 2 }))).toContain('Epics at once');
+    expect(render(issue({ type: 'epic', parentKey: 'AER-0', wipLimit: 2 }))).toContain('Stories at once');
+  });
+
   it('draws a Local model field at prefer, naming the ancestor it came from, and none at none', () => {
     const prefer = render(issue({ localModel: 'prefer', localModelFrom: 'AER-9' }));
     expect(prefer).toContain('Local model');

@@ -6,6 +6,7 @@ import {
   addDependency,
   clearClaim,
   deleteIssue,
+  getAmbitionRow,
   getAssignees,
   getBoard,
   getComments,
@@ -39,6 +40,7 @@ import {
   setIssueDangerous,
   setWipLimit,
 } from '../api/client';
+import { AmbitionCrumb, AmbitionHeader } from '../components/AmbitionHeader';
 import { AssigneeField } from '../components/AssigneeField';
 import { QuestionOptions, Waiting } from '../components/OpenQuestions';
 import { OmittedRunners } from '../components/OmittedRunners';
@@ -122,6 +124,7 @@ import { canMoveDown, canMoveUp, implementationNote, reordered, writeCapabilityO
 import { CapabilityAddForm, CapabilityEditForm, CapabilityRemoveDialog } from '../components/CapabilityEditor';
 import { homeCardApplies } from '../lib/homeScreen';
 import { useMe } from '../lib/useMe';
+import { useScope } from '../lib/useScope';
 import { findAmbitionAbove, sameSet, servedIds, toggleId, writeServes } from '../lib/serves';
 import { writeNoCode } from '../lib/noCode';
 import { writeReleaseNote } from '../lib/releaseNote';
@@ -138,13 +141,14 @@ import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { useCoarsePointer } from '../lib/viewport';
 import { useMoveConfirmation } from '../lib/useMoveConfirmation';
 import { useWipOverride } from '../lib/useWipOverride';
-import { wipLimitDraft, wipLimitRequest } from '../lib/wip';
+import { wipLimitDraft, wipLimitHint, wipLimitLabel, wipLimitPlaceholder, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
 import { LEGAL_PARENT_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS, RUNS_CHILDREN } from '../types';
 import type {
   AmbitionChange,
   AmbitionPass,
   AmbitionPassVerdict,
+  AmbitionRow,
   AssigneeDirectory,
   AssigneeRequest,
   Board,
@@ -175,6 +179,7 @@ export function IssuePage() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
   const { me } = useMe();
+  const scope = useScope();
 
   const [issue, setIssue] = useState<Issue | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
@@ -198,6 +203,12 @@ export function IssuePage() {
   const [workLogError, setWorkLogError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<Capability[] | null>(null);
   const [capabilitiesError, setCapabilitiesError] = useState<string | null>(null);
+  /* The one row the Ambitions page would show for this same ambition - its
+     stage, bar counts and limit, read narrowed to this key so the two pages
+     can never disagree. Null off a non-ambition, while still loading, and on
+     a failed read - AmbitionHeader draws rowError instead, then. */
+  const [ambitionRow, setAmbitionRow] = useState<AmbitionRow | null>(null);
+  const [ambitionRowError, setAmbitionRowError] = useState<string | null>(null);
   const [passes, setPasses] = useState<AmbitionPass[] | null>(null);
   const [passesError, setPassesError] = useState<string | null>(null);
   const [changes, setChanges] = useState<AmbitionChange[] | null>(null);
@@ -310,6 +321,15 @@ export function IssuePage() {
       (err: unknown) => ({ loaded: null, failure: message(err) }),
     );
 
+    /* And the row the Ambitions page would show for this same key, on the
+       same tolerant terms - a non-ambition's empty answer, and a failed
+       read's own line handed to AmbitionHeader rather than this page's
+       error, which somebody came here to read past. */
+    const rowing = getAmbitionRow(key).then(
+      (loaded) => ({ loaded, failure: null as string | null }),
+      (err: unknown) => ({ loaded: null, failure: message(err) }),
+    );
+
     /* And the budget, on the same tolerant terms as the capabilities - sent for
        every type, and a non-ambition's 400 is caught here and left for `Budget`
        to never draw, since that card gates on `issue.type` first. */
@@ -387,6 +407,10 @@ export function IssuePage() {
     const capped = await capping;
     setCapabilities(capped.loaded);
     setCapabilitiesError(capped.failure);
+
+    const rowed = await rowing;
+    setAmbitionRow(rowed.loaded);
+    setAmbitionRowError(rowed.failure);
 
     const budgeted = await budgeting;
     setBudget(budgeted.loaded);
@@ -975,6 +999,8 @@ export function IssuePage() {
 
   return (
     <div className="hatch-issue-page">
+      {issue.type === 'ambition' && <AmbitionCrumb title={issue.title} scopeKeys={scope.keys} />}
+
       <PageHeader
         title={<InlineTitle issue={issue} onSave={(title) => void save({ title })} />}
         description={<IssueSubheader issue={issue} project={project} stopped={stopped} />}
@@ -1236,11 +1262,28 @@ export function IssuePage() {
               here. Retyping one to something else leaves the value in place,
               unread. */}
           {RUNS_CHILDREN.includes(issue.type) && (
-            <WipLimitField limit={issue.wipLimit} onSetLimit={(limit) => void saveWipLimit(limit)} />
+            <WipLimitField type={issue.type} limit={issue.wipLimit} onSetLimit={(limit) => void saveWipLimit(limit)} />
           )}
         </div>
         )}
       </Card>
+
+      {/* An ambition's own words come before everything the rest of this page
+          counts about it - see HA-2844. Its header card carries the same
+          stage HA-2843 computed for the Ambitions row, read narrowed to this
+          key, so the two can never disagree. */}
+      {issue.type === 'ambition' && (
+        <AmbitionHeader
+          issue={issue}
+          row={ambitionRow}
+          rowError={ambitionRowError}
+          project={project}
+          passCount={passes ? passes.length : null}
+          onSetLimit={(limit) => void saveWipLimit(limit)}
+        />
+      )}
+
+      {issue.type === 'ambition' && <Description issue={issue} onSave={(description) => save({ description })} />}
 
       {/* Drawn where something may be filed under this issue, and where
           something already is. The second arm is not redundant: a retype does
@@ -1334,7 +1377,7 @@ export function IssuePage() {
         deferred={board.statuses.find((s) => s.id === issue.statusId)?.isDeferred ?? false}
       />
 
-      <Description issue={issue} onSave={(description) => save({ description })} />
+      {issue.type !== 'ambition' && <Description issue={issue} onSave={(description) => save({ description })} />}
 
       <ReleaseNote issue={issue} onSave={saveReleaseNote} error={releaseNoteError} />
 
@@ -2906,7 +2949,7 @@ export function Comments({
  * is not a slice of the board, so it is not that component and not its
  * helpers, only its pattern.
  */
-function WipLimitField({ limit, onSetLimit }: { limit: number | null; onSetLimit: (limit: string) => void }) {
+function WipLimitField({ type, limit, onSetLimit }: { type: IssueType; limit: number | null; onSetLimit: (limit: string) => void }) {
   const [draft, setDraft] = useState(wipLimitDraft(limit));
   const [known, setKnown] = useState(limit);
 
@@ -2917,10 +2960,11 @@ function WipLimitField({ limit, onSetLimit }: { limit: number | null; onSetLimit
   }
 
   return (
-    <Field label="Stories at once" hint="Blank means no limit.">
+    <Field label={wipLimitLabel(type)} hint={wipLimitHint(type)}>
       <input
         inputMode="numeric"
         value={draft}
+        placeholder={wipLimitPlaceholder(type)}
                 onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
           const next = wipLimitRequest(draft);
