@@ -16,6 +16,7 @@ function project(overrides: Partial<Project>): Project {
     key: 'AER',
     name: 'Aerial',
     issueCount: 0,
+    lastIssueNumber: 0,
     createdAt: '2026-01-01',
     color: null,
     icon: null,

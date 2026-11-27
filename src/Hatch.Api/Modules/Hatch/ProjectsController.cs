@@ -1258,7 +1258,8 @@ public class ProjectsController(
             project.OnePullRequestPolicy, project.OnePullRequestPolicyBy, project.OnePullRequestPolicyAt,
             project.Priority, project.PriorityBy, project.PriorityAt,
             project.FilesContributions, project.FilesContributionsBy, project.FilesContributionsAt,
-            project.AllowsUnsignedCommits, project.AllowsUnsignedCommitsBy, project.AllowsUnsignedCommitsAt);
+            project.AllowsUnsignedCommits, project.AllowsUnsignedCommitsBy, project.AllowsUnsignedCommitsAt,
+            project.NextIssueNumber - 1);
 
     /// <summary>
     /// Whether a project already holds <paramref name="key"/>, hidden ones included. A key is unique

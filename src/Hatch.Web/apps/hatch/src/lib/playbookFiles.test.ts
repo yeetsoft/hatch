@@ -37,6 +37,7 @@ const project = (over: Partial<Project> = {}): Project => ({
   key: 'HA',
   name: 'Hatch',
   issueCount: 0,
+  lastIssueNumber: 0,
   createdAt: '2026-09-09T12:00:00Z',
   color: null,
   icon: null,

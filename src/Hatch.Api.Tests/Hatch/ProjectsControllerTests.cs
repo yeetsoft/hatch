@@ -391,6 +391,84 @@ public class ProjectsControllerTests
         Assert.False(strangerView.CanApprove);
     }
 
+    // ---- Last issue number ----
+
+    [Fact]
+    public async Task AProjectWithNoIssues_SaysItsLastIssueNumberIsZero()
+    {
+        var h = await NewAsync();
+
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.Equal(0, created.LastIssueNumber);
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.Equal(0, read.LastIssueNumber);
+    }
+
+    [Fact]
+    public async Task AProjectsLastIssueNumber_IsTheNumberBeforeTheNextOne()
+    {
+        var h = await NewAsync();
+        var project = (await h.Db.Projects.FindAsync(h.ProjectId))!;
+        project.NextIssueNumber = 4;
+        h.Db.ProjectMembers.Add(new EfHatchProjectMember
+        {
+            ProjectId = h.ProjectId, PersonId = h.Nathan.Id, Role = ProjectMemberRole.Owner, CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == h.ProjectId);
+        Assert.Equal(3, read.LastIssueNumber);
+
+        var landed = Value(await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null), default));
+        Assert.Equal(3, landed.LastIssueNumber);
+    }
+
+    [Fact]
+    public async Task DeletingTheNewestIssue_LeavesTheLastIssueNumberWhereItWas()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await AddPlaybookRowsAsync(h, h.ProjectId, 1);
+        var project = (await h.Db.Projects.FindAsync(h.ProjectId))!;
+
+        // Numbers are never reused (Entities.cs:59-75), so deleting the newest
+        // issue must not lower what the next one takes.
+        h.Db.Issues.Add(new EfHatchIssue
+        {
+            ProjectId = h.ProjectId,
+            Number = project.NextIssueNumber++,
+            Type = "task",
+            Title = "First",
+            Description = "",
+            StatusId = todo.Id,
+            Rank = 1024,
+            CreatedBy = "Nathan",
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        });
+        var second = new EfHatchIssue
+        {
+            ProjectId = h.ProjectId,
+            Number = project.NextIssueNumber++,
+            Type = "task",
+            Title = "Second",
+            Description = "",
+            StatusId = todo.Id,
+            Rank = 2048,
+            CreatedBy = "Nathan",
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        };
+        h.Db.Issues.Add(second);
+        await h.Db.SaveChangesAsync();
+
+        h.Db.Issues.Remove(second);
+        await h.Db.SaveChangesAsync();
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == h.ProjectId);
+        Assert.Equal(2, read.LastIssueNumber);
+    }
+
     // ---- Colour and icon ----
 
     [Fact]
